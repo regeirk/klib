@@ -48,12 +48,14 @@ rcParams.update(params)
 
 
 try:
+    reload(cm)
     reload(common)
     reload(file)
     reload(stats)
     reload(graphics)
     reload(interpolate)
 except:
+    import cm
     import common
     import file
     import file as filemngmnt # for backwards compatibility

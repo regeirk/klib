@@ -36,7 +36,7 @@ def __init__(show=False):
 
 
 def figure(fp=dict(), ap=dict(left=0.15, bottom=0.12, right=0.95, top=0.95, 
-    wspace=0.10, hspace=0.10)):
+    wspace=0.10, hspace=0.10), orientation='portrait'):
     """Creates a standard figure.
     
     PARAMETERS
@@ -52,29 +52,54 @@ def figure(fp=dict(), ap=dict(left=0.15, bottom=0.12, right=0.95, top=0.95,
 
     __init__()
     golden = (5 ** 0.5 + 1.0) / 2.0    # The golden ratio
+    
+    if 'figsize' not in fp.keys():
+        if orientation == 'landscape':
+            fp['figsize'] = (11, 8)
+        elif orientation == 'portrait':
+            fp['figsize'] = (8, 11)
+        elif orientation == 'squared':
+            fp['figsize'] = (8, 8)
+        elif orientation == 'worldmap':
+            fp['figsize'] = (9, 5.0625) # Widescreen aspect ratio 16:9
+        else:
+            raise Warning, 'Orientation \'%s\' not allowed.' % (orientation, )
+    
     fig = pylab.figure(**fp)
     fig.subplots_adjust(**ap)
+    
     return fig
 
 
-def timeformat(ax, dt=7):
+def timeformat(ax, dt=7, axis='x'):
     """Formats time axis.
 
     """
     if dt <= 90:
-        xmajor = pylab.matplotlib.dates.DayLocator(range(1, 30, 10))
-        xminor = pylab.matplotlib.dates.DayLocator()
+        major = pylab.matplotlib.dates.DayLocator(range(1, 30, 10))
+        minor = pylab.matplotlib.dates.DayLocator()
         fmt = u'%d/%m'
     else:
-        xmajor = pylab.matplotlib.dates.YearLocator(1)
-        xminor = pylab.matplotlib.dates.MonthLocator(range(1, 13), 
+        major = pylab.matplotlib.dates.YearLocator(1)
+        minor = pylab.matplotlib.dates.MonthLocator(range(1, 13), 
             bymonthday=1)
         fmt = u'%Y'
-    ax.xaxis.set_major_locator(xmajor)
-    ax.xaxis.set_minor_locator(xminor)
-    ax.xaxis.set_major_formatter(pylab.matplotlib.dates.DateFormatter(fmt))
-    ax.format_xdata = pylab.matplotlib.dates.DateFormatter(u"%Y-%m-%d %H:%M")
-    pylab.setp(ax.get_xticklabels()[1::2], visible=False)
+    if axis == 'x':
+        Ax = ax.xaxis
+    elif axis == 'y':
+        Ax = ax.yaxis
+    Ax.set_major_locator(major)
+    Ax.set_minor_locator(minor)
+    Ax.set_major_formatter(pylab.matplotlib.dates.DateFormatter(fmt))
+    
+    if axis == 'x':
+        ax.format_xdata = pylab.matplotlib.dates.DateFormatter((u'%Y-%m-%d'
+            ' %H:%M'))
+        pylab.setp(ax.get_xticklabels()[1::2], visible=False)
+    elif axis == 'y':
+        ax.format_ydata = pylab.matplotlib.dates.DateFormatter((u'%Y-%m-%d'
+            ' %H:%M'))
+        pylab.setp(ax.get_yticklabels()[1::2], visible=False)
 
 
 def dropspines(ax, dist=7):
@@ -314,7 +339,7 @@ def wavelet_plot(tm, period, z, power, coi, glbl, scale_avg, fft=None,
 
     # Temporal sampling interval, colorbar levels, its extend, the period
     # ticks, the cone of influence fill coordinates.
-    dt = abs(numpy.diff(tm)).mean()
+    dt = tm[1] - tm[0]
     if type(levels).__name__ == 'NoneType':
         #levels = numpy.array([2, 5, 10])
         levels = 2. ** numpy.arange(-3, 6)
@@ -356,7 +381,7 @@ def wavelet_plot(tm, period, z, power, coi, glbl, scale_avg, fft=None,
                    numpy.log2(levels), cmap=cmap, extend=extend)
     if type(power_signif).__name__ == 'ndarray':
         bx.contour(tm, numpy.log2(period), power_signif, [-99, 1], colors='k',
-                linewidths=1.)
+            linewidths=1.)
     bx.fill(coix, numpy.log2(coiy), 'k', alpha='0.3', hatch='x')
     try:
         bx.axhline(numpy.log2(min(pminmax)), linewidth=2, color='w', alpha=0.8)

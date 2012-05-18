@@ -34,6 +34,26 @@ from string import atof
 import common
 
 
+def detect_ftype(fname):
+    """Extracts the type of file saved from string
+    
+    PARAMETERS
+        fname (string):
+            Name of the file to be analysed.
+    
+    RETURNS
+        ftype (string):
+            Type of file.
+
+    """
+    for s in ['xy', 'xt', 'ty']:
+        i = fname.find(s)
+        if i >= 0:
+            return fname[i:i+len(s)]
+    
+    return False
+
+
 def load_map(fullpath, ftype='xy', delimiter='\t', masked=False, topomask=None,
     xlim=None, ylim=None, lon=None, lat=None, tm=None, lon180=False, 
     pad=False):
@@ -79,6 +99,7 @@ def load_map(fullpath, ftype='xy', delimiter='\t', masked=False, topomask=None,
   
     # Pads edges with NaN's to avoid distortions when generating maps.
     if pad:
+        dx, dy = x[1] - x[0], y[1] - y[0]
         if (lon == None) and (ftype in ['xt', 'xt']):
             lon = numpy.concatenate([[x[0] - dx], x, [x[-1] + dx]])
         if (lat == None) and (ftype in ['xy', 'ty']):
@@ -98,10 +119,10 @@ def load_map(fullpath, ftype='xy', delimiter='\t', masked=False, topomask=None,
             lat = y
         if tm == None:
             tm = t
-
+        
         lon180 = common.lon180(lon)
         x180 = common.lon180(x)
-
+        
         if ftype == 'xy':
             k, l, m = len(lon), len(lat), 1
             if masked:
@@ -110,18 +131,41 @@ def load_map(fullpath, ftype='xy', delimiter='\t', masked=False, topomask=None,
             else:
                 Z = numpy.empty((l, k)) * numpy.nan
             #
-            u, v = numpy.intersect1d(lon180, x180), numpy.intersect1d(lat, y)
+            u = numpy.unique(set(lon180) & set(x180))
+            v = numpy.unique(set(lat) & set(y))
+            if (len(u) == 0) or (len(v) == 0):
+                return False
             i = [pylab.find(x180 == a)[0] for a in u]
             j = [pylab.find(y == b)[0] for b in v]
+            mx, my = numpy.meshgrid(i, j)
             k = [pylab.find(lon180 == a)[0] for a in u]
             l = [pylab.find(lat == b)[0] for b in v]
+            nx, ny = numpy.meshgrid(k, l)
+            Z[ny, nx] = z[my, mx]
+        
+        if ftype == 'xt':
+            k, l, m = len(lon), 1, len(tm)
+            if masked:
+                Z = numpy.ma.empty((m, k)) * numpy.nan
+                Z.mask = True
+            else:
+                Z = numpy.empty((m, k)) * numpy.nan
+            #
+            u = numpy.unique(set(lon180) & set(x180))
+            if len(u) == 0:
+                return False
+            i = [pylab.find(x180 == a)[0] for a in u]
+            k = [pylab.find(lon180 == a)[0] for a in u]
+            v = set(tm) & set(t)
+            if len(v) == 0:
+                return False
+            j = [pylab.find(t == b)[0] for b in v]
+            l = [pylab.find(tm == b)[0] for b in v]
+            
             mx, my = numpy.meshgrid(i, j)
             nx, ny = numpy.meshgrid(k, l)
             Z[ny, nx] = z[my, mx]
-
-        if ftype == 'xt':
-            raise Warning, ('Loading of zonal-meridional files not '
-                'implemented yet.')
+        
         if ftype == 'ty':
             raise Warning, ('Loading of temporal-meridional files not '
                 'implemented yet.')
@@ -131,23 +175,35 @@ def load_map(fullpath, ftype='xy', delimiter='\t', masked=False, topomask=None,
         tm = t
         Z = z
     
+    if (xlim != None) or (ylim != None):
+        if xlim == None:
+            xlim = [lon.min(), lon.max()]
+        if ylim == None:
+            ylim = [lat.min(), lat.max()]
+        selx = pylab.find((lon >= min(xlim)) & (lon <= max(xlim)))
+        sely = pylab.find((lat >= min(ylim)) & (lat <= max(ylim)))
+        lon = lon[selx]
+        lat = lat[sely]
+        i, j = numpy.meshgrid(selx, sely)
+        Z = Z[j, i]
+    
     if topomask != None:
         # Interpolates topography into data grid.
         ezi, _, _ = interpolate.nearest([common.etopo.x, 
             common.etopo.y], common.etopo.z, [lon, lat])
         if topomask == 'ocean':
-            z.mask = z.mask | (ezi > 0)
+            Z.mask = Z.mask | (ezi > 0)
         elif topomask == 'land':
-            z.mask = z.mask | (ezi < 0)
+            Z.mask = Z.mask | (ezi < 0)
 
     if masked:
         Z.data[Z.mask] = 0
 
     return lon, lat, tm, Z
 
-def load_dataset(path, pattern='(.*)', ftype='xy', delimiter='\t',
+def load_dataset(path, pattern='(.*)', ftype='xy', flist=None, delimiter='\t',
                  var_from_name=False, masked=False, xlim=None, ylim=None, 
-                 lon=None, lat=None, tm=None, topomask=None):
+                 lon=None, lat=None, tm=None, topomask=None, verbose=False):
     """Loads an entire dataset.
 
     It uses the numpy.loadtxt function and therefore accepts regular
@@ -180,6 +236,9 @@ def load_dataset(path, pattern='(.*)', ftype='xy', delimiter='\t',
             and the rest contains the data in matrix style. If
             var_from_name is set to True, it assumes that the latitude
             is given at the upper left cell.
+        flist (array like, optional) :
+            Lists the files to be loaded in path. If set, it ignores the
+            pattern.
         delimiter (string, optional) :
             Specifies the data delimiter used while loading the data.
             The default value is '\t' (tab)
@@ -197,6 +256,8 @@ def load_dataset(path, pattern='(.*)', ftype='xy', delimiter='\t',
         lon, lat, tm (array like, optional):
         topomask (string, optional) :
             Topography mask.
+        verbose (boolean, optional) :
+            If set to true, does not print anything on screen.
             
 
     RETURNS
@@ -217,13 +278,15 @@ def load_dataset(path, pattern='(.*)', ftype='xy', delimiter='\t',
 
     S = 'Preparing data'
     s = '%s...' % (S)
-    os.sys.stdout.write(s)
-    os.sys.stdout.flush()
+    if not verbose:
+        os.sys.stdout.write(s)
+        os.sys.stdout.flush()
 
     # Generates list of files and tries to match them to the pattern
-    flist = os.listdir(path)
-    flist, match = common.reglist(flist, pattern)
-
+    if flist == None:
+        flist = os.listdir(path)
+        flist, match = common.reglist(flist, pattern)
+    
     # Loads all the data from file list to create arrays
     N = len(flist)
     if N == 0:
@@ -246,7 +309,8 @@ def load_dataset(path, pattern='(.*)', ftype='xy', delimiter='\t',
                 continue
 
             x, y, t, z = load_map('%s/%s' % (path, fname), ftype=ftype,
-                delimiter=delimiter, lon=lon, lat=lat, tm=tm)
+                delimiter=delimiter, lon=lon, lat=lat, tm=tm, masked=masked,
+                topomask=topomask)
 
             if var_from_name:
                 if (ftype == 'xt') | (ftype == 'ty'):
@@ -261,9 +325,12 @@ def load_dataset(path, pattern='(.*)', ftype='xy', delimiter='\t',
                 elif ftype == 'xy':
                     t = atof(match[n][-1])       # Gets time out of last match.
             
-            if type(lon).__name__ in ['int', 'long', 'float', 'float64']:
+            if numpy.isnan(t).all():
+                t = 0
+            
+            if type(x).__name__ in ['int', 'long', 'float', 'float64']:
                 x = [x]
-            if type(lat).__name__ in ['int', 'long', 'float', 'float64']:
+            if type(y).__name__ in ['int', 'long', 'float', 'float64']:
                 y = [y]
             if type(t).__name__ in ['int', 'long', 'float', 'float64']:
                 t = [t]
@@ -289,19 +356,27 @@ def load_dataset(path, pattern='(.*)', ftype='xy', delimiter='\t',
                     a, b, c = i.shape
                     z = z.reshape((a, 1, c))
                 
-                Z[k, j, i] = z
-
-
+                # Makes sure only to overwrite values not previously assigned.
+                if masked:
+                    Z[k, j, i] = numpy.ma.where(~Z[k, j, i].mask, 
+                        Z[k, j, i], z)
+                else:
+                    Z[k, j, i] = numpy.where(~numpy.isnan(Z[k, j, i]), 
+                        Z[k, j, i], z)
+            
             ###################################################################
             # PROFILING
             ###################################################################
-            os.sys.stdout.write(len(s) * '\b')
+            if not verbose:
+                os.sys.stdout.write(len(s) * '\b')
             s = '%s (%s)... %s ' % (S, fname, common.profiler(N, n + 1, t0, t1,
                 t2))
-            os.sys.stdout.write(s)
-            os.sys.stdout.flush()
+            if not verbose:
+                os.sys.stdout.write(s)
+                os.sys.stdout.flush()
         #
-        os.sys.stdout.write('\n')
+        if not verbose:
+            os.sys.stdout.write('\n')
     
         # Now creates data array based on input parameters xlim, ylim and
         # the loaded coordinate sets.
@@ -327,16 +402,27 @@ def load_dataset(path, pattern='(.*)', ftype='xy', delimiter='\t',
             # spaced and that they are inside the coordinate limits.
             dx, dy, dt = numpy.diff(Lon), numpy.diff(Lat), numpy.diff(Tm)
             
-            if ((not (dx == dx[0]).all()) and (not (dy == dy[0]).all()) and 
-                (not (dt == dt[0]).all())):
-                raise Warning, 'One or more coordinates are not evenly spaced.'
-            dx, dy, dz = dx[0], dy[0], dt[0]
-            if xlim != None:
-                selx = pylab.find((Lon >= min(xlim)) & (Lon <= max(xlim)))
-                Lon = Lon[selx]
-            if ylim != None:
-                sely = pylab.find((Lat >= min(ylim)) & (Lat <= max(ylim)))
-                Lat = Lat[sely]
+            if len(dx) == 0: dx = numpy.array([1.])
+            if len(dy) == 0: dy = numpy.array([1.])
+            if len(dt) == 0: dt = numpy.array([1.])
+            
+            #if ((not (dx == dx[0]).all()) or (not (dy == dy[0]).all()) or 
+            #    (not (dt == dt[0]).all())):
+            #    raise Warning, 'One or more coordinates are not evenly spaced.'
+            
+            dx = dx[0]
+            dy = dy[0]
+            dt = dt[0]
+            
+            if xlim == None:
+                xlim = [Lon.min(), Lon.max()]
+            if ylim == None:
+                ylim = [Lat.min(), Lat.max()]
+
+            selx = pylab.find((Lon >= min(xlim)) & (Lon <= max(xlim)))
+            Lon = Lon[selx]
+            sely = pylab.find((Lat >= min(ylim)) & (Lat <= max(ylim)))
+            Lat = Lat[sely]
             
             # Pads edges with NaN's to avoid distortions when generating maps.
             if lon == None:
@@ -348,8 +434,10 @@ def load_dataset(path, pattern='(.*)', ftype='xy', delimiter='\t',
             a, b, c = Lon.size, Lat.size, Tm.size
             if masked:
                 Z = numpy.ma.empty([c, b, a], dtype=float) * numpy.nan
+                Z.mask = True
             else:
                 Z = numpy.empty([c, b, a], dtype=float) * numpy.nan
+            lon, lat = numpy.array(Lon), numpy.array(Lat)
             
             # Now everything might be ready for the second step in the loop,
             # filling in the data array.
@@ -357,7 +445,8 @@ def load_dataset(path, pattern='(.*)', ftype='xy', delimiter='\t',
 
     # Interpolates topography into data grid.
     if topomask != None:
-        print 'Masking topographic features...'
+        if not verbose:
+            print 'Masking topographic features...'
         ezi, _, _ = interpolate.nearest([common.etopo.x, 
             common.etopo.y], common.etopo.z, [Lon, Lat])
         if topomask == 'ocean':
@@ -371,9 +460,9 @@ def load_dataset(path, pattern='(.*)', ftype='xy', delimiter='\t',
         Z.mask = Z.mask | tmask
 
     if masked:
-        Z.mask = Z.mask | numpy.isnan(Z)
+        Z.mask = Z.mask | numpy.isnan(Z.data)
         Z.data[Z.mask] = 0
-
+    
     return Lon, Lat, Tm, Z
 
 
@@ -416,7 +505,8 @@ def save_map(lon, lat, z, fullpath, tm=None, fmt='%.3f', nonan=True,
         z = z[:, i]
 
     # Detects invalid values from mask or NaN's.
-    if type(z).__name__ == 'MaskedArray':
+    if ((type(z).__name__ == 'MaskedArray') and 
+        (type(z.mask).__name__ != 'bool_')):
         mask = ~z.mask
     else:
         mask = ~numpy.isnan(z)

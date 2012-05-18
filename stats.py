@@ -8,16 +8,17 @@ surface height, for example.
 
 AUTHOR
     Sebastian Krieger
-    email: sebastian@regeirk.com
+    email: sebastian@nublia.com
 
 REVISION
+    4 (2012-02-24 20:17 -0300)
     3 (2011-09-08 13:54 -0300)
     2 (2011-05-01 22:21 -0300)
     1 (2011-04-20 14:48 -0300)
 
 """
 
-__version__ = '$Revision: 2 $'
+__version__ = '$Revision: 4 $'
 # $Source$
 
 __all__ = ['acorr', 'basics', 'wavelet_analysis', 'polyfit2d', 'polyval2d', 
@@ -40,7 +41,7 @@ import common
 import wavelet
 import mapping
 import graphics
-import file as filemngmnt
+import file as fm
 
 
 def acorr(a):
@@ -226,8 +227,8 @@ def local_maxima(z, cyclic=False, epsilon=0.):
 def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
                      siglvl=0.95, loc=None, onlyloc=False, periods=None,
                      sel_periods=[], show=False, save='', dsave='', prefix='',
-                     labels=dict(), title=None, fpath='', fpattern='',
-                     std=dict(), crange=None, levels=None,
+                     labels=dict(), title=None, name=None, fpath='', 
+                     fpattern='', std=dict(), crange=None, levels=None,
                      cmap=cm.GMT_no_green, debug=False):
     """Continuous wavelet transform and significance analysis.
 
@@ -290,6 +291,9 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
             Sets the labels for the plot axis.
         title (string, array like, optional) :
             Title of each of the selected periods.
+        name (string, array like, optional) :
+            Name of each of the selected periods. Used when saving the 
+            results to files.
         fpath (string, optional) :
             Path for the source files to be loaded when memory issues
             are a concern.
@@ -343,6 +347,12 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
                     spectra.
                 fft --
                     Fourier spectrum.
+                fft_first --
+                    Fourier spectrum of the first half of the 
+                    time-series.
+                fft_second --
+                    Fourier spectrum of the second half of the 
+                    time-series.
                 fft_period --
                     Fourier periods (in days).
                 trend --
@@ -357,6 +367,10 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
     # Resseting unit labels for hovmoller plots
     hlabels = dict(labels)
     hlabels['units'] = ''
+    
+    # Setting some titles and paths
+    if name == None:
+        name = title
 
     # Working with the std parameter and setting its properties:
     if 'val' in std.keys():
@@ -400,27 +414,24 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
         # latitudes and loads the first file to get the main parameters.
         flist = os.listdir(fpath)
         flist, match = common.reglist(flist, fpattern)
+        if len(flist) == 0:
+            raise Warning, 'No files matched search pattern.'
+        flist = numpy.asarray(flist)
         lst_lat = []
         for item in match:
-            y = string.atof(item[0])
-            if item[1].upper() == 'S': y *= -1
+            y = string.atof(item[-2])
+            if item[-1].upper() == 'S': y *= -1
             lst_lat.append(y)
-        lon, lat, tm, z = filemngmnt.load_map('%s/%s' % (fpath, flist[0]),
-                                              ftype=flist[0][-5:-3])
+        # Detect file type from file name
+        ftype = fm.detect_ftype(flist[0])
+        x, y, tm, z = fm.load_map('%s/%s' % (fpath, flist[0]),
+            ftype=ftype, masked=True)
+        if lon == None:
+            lon = x
         lat = numpy.unique(lst_lat)
         dim = 2
     else:
         # Transforms input arrays in numpy arrays and numpy masked arrays.
-        s = type(lat).__name__
-        if s in ['int', 'float', 'float64']:
-            lat = numpy.asarray([lat])
-        elif s != 'NoneType':
-            lat = numpy.asarray(lat)
-        s = type(lon).__name__
-        if s in ['int', 'float', 'float64']:
-            lon = numpy.asarray([lon])
-        elif s != 'NoneType':
-            lon = numpy.asarray(lon)
         tm = numpy.asarray(tm)
         z = numpy.ma.asarray(z)
         z.mask = numpy.isnan(z)
@@ -441,6 +452,18 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
             z = z.reshape(c, b, a)
         if tm.size != c:
             raise Warning, 'Time and data lengths do not match.'
+    
+    # Transforms coordinate arrays into numpy arrays
+    s = type(lat).__name__
+    if s in ['int', 'float', 'float64']:
+        lat = numpy.asarray([lat])
+    elif s != 'NoneType':
+        lat = numpy.asarray(lat)
+    s = type(lon).__name__
+    if s in ['int', 'float', 'float64']:
+        lon = numpy.asarray([lon])
+    elif s != 'NoneType':
+        lon = numpy.asarray(lon)
 
     # Starts the mother wavelet class instance and determines important
     # analysis parameters
@@ -454,16 +477,16 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
     else:
         raise Warning, 'Mother wavelet unknown.'
 
-    t = tm / 365.2421896698           # Time array in years
+    t = tm / common.daysinyear        # Time array in years
     dt = tm[1] - tm[0]                # Temporal sampling interval
     try:                              # Zonal sampling interval
-        dx = abs(numpy.diff(lon)).mean()
+        dx = lon[1] - lon[0]
     except:
         dx = 1
     try:                              # Meridional sampling interval
-        dy = abs(numpy.diff(lat)).mean()
+        dy = lat[1] - lat[0]
     except:
-        dy = 1
+        dy = dx
     if numpy.isnan(dt): dt = 1
     if numpy.isnan(dx): dx = 1
     if numpy.isnan(dy): dy = dx
@@ -478,13 +501,13 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
         levels = 2. ** numpy.arange(-3, 6)
 
     if fpath:
-        N = len(flist)
-        lon = numpy.arange(-81. - dx / 2., 290. + dx / 2, dx)
-        lat = numpy.unique(numpy.asarray(lst_lat))
+        N = lat.size
+        # TODO: refactoring # lon = numpy.arange(-81. - dx / 2., 290. + dx / 2, dx)
+        # TODO: refactoring # lat = numpy.unique(numpy.asarray(lst_lat))
         c, b, a = tm.size, lat.size, lon.size
     else:
         N = a * b
-
+    
     # Making sure that the longitudes range from -180 to 180 degrees and
     # setting the squared search radius R2.
     try:
@@ -495,7 +518,8 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
     if numpy.isnan(R2):
         R2 = 65535.
     if loc != None:
-        loc = [[common.lon180(item[0]), item[1]] for item in loc]
+        loc = numpy.asarray([[common.lon180(item[0]), item[1]] for item in 
+            loc])
 
     # Initializes important result variables such as the global wavelet power
     # spectrum map, scale avaraged spectrum time-series and their significance,
@@ -529,9 +553,12 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
     avg_spectrum_signif = numpy.ma.empty([C, b, a]) * numpy.nan
     trend = numpy.ma.empty([b, a]) * numpy.nan
     wavelet_trend = numpy.ma.empty([C, b, a]) * numpy.nan
+    fft_trend = numpy.ma.empty([C, b, a]) * numpy.nan
     std_map = numpy.ma.empty([b, a]) * numpy.nan
     zero = numpy.ma.empty([c, a])
     fft_spectrum = None
+    fft_spectrum1 = None
+    fft_spectrum2 = None
 
     # Walks through each latitude and then through each longitude to perform
     # the temporal wavelet analysis.
@@ -542,7 +569,6 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
     s = 'Spectral analysis of %d location%s... ' % (N, plural)
     stdout.write(s)
     stdout.flush()
-    n = 0
     for j in range(b):
         t2 = time()
         isloc = False  # Ressets 'is special location' flag
@@ -553,40 +579,39 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
             avg_spectrum *= numpy.nan
             avg_spectrum.mask = False
         if fpath:
+            findex = pylab.find(lst_lat == lat[j])
+            if len(findex) == 0:
+                continue
+            ftype = fm.detect_ftype(flist[findex[0]])
             try:
-                findex = pylab.find(lst_lat == lat[j])[0]
+                x, y, tm, z = fm.load_dataset(fpath, flist=flist[findex],
+                    ftype=ftype, masked=True, lon=lon, lat=lat[j:j+1],
+                    verbose=True)
             except:
                 continue
-            x, y, tm, z = filemngmnt.load_map('%s/%s' % (fpath, flist[findex]),
-                            ftype=flist[findex][-5:-3], masked=True)
+            z = z[:, 0, :]
             x180 = common.lon180(x)
 
         # Determines the first and second halves of the time-series and some
         # constants for the FFT
+        fft_ta = numpy.ceil(t.min())
+        fft_tb = numpy.floor(t.max())
+        fft_tc = numpy.round(fft_ta + fft_tb) / 2
+        fft_ia = pylab.find((t >= fft_ta) & (t <= fft_tc))
+        fft_ib = pylab.find((t >= fft_tc) & (t <= fft_tb))
+        fft_N = int(2 ** numpy.ceil(numpy.log2(max([len(fft_ia), 
+            len(fft_ib)]))))
+        fft_N2 = fft_N / 2 - 1
+        fft_dt = t[fft_ib].mean() - t[fft_ia].mean()
         
-        fftN = 2 * (len(fft) + 1)
         for i in range(a):
+            # Some string output.
             try:
-                Y, X = common.num2latlon(lon[i], lat[j], mode='each',
-                                         padding=False)
+                Y, X = common.num2latlon(lon[i], lat[j], mode='each', 
+                    padding=False)
             except:
                 Y = X = '?'
-
-            # Calculates the distance of the current point to any special
-            # location set in the 'loc' parameter. If only special locations
-            # are to be analysed, then skips all other ones. If the input
-            # array is one dimensional, then do the analysis anyway.
-            if dim == 1:
-                dist = numpy.asarray([0.])
-            else:
-                try:
-                    dist = numpy.asarray([((item[0] - (lon180[i])) **
-                        2 + (item[1] - lat[j]) ** 2) for item in loc])
-                except:
-                    dist = []
-            if (dist > R2).all() & (loc != 'all') & onlyloc:
-                continue
-
+            
             # Extracts individual time-series from the whole dataset and
             # sets or calculates its standard deviation, squared standard
             # deviation and finally the normalized time-series.
@@ -614,9 +639,8 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
                 if (estd < 0) & (abs(estd) > std['err']):
                     if debug:
                         warnings.warn('Discrepant input standard deviation '
-                                      '(%f) location (%.3f, %.3f) will be '
-                                      'disregarded.' % (estd, lon180[i],
-                                      lat[j]))
+                            '(%f) location (%.3f, %.3f) will be '
+                            'disregarded.' % (estd, lon180[i], lat[j]))
                     continue
             else:
                 fstd = fz.std()
@@ -624,6 +648,21 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
             std_map[j, i] = fstd
             zero[:, i] = fz
             fz = (fz - fz.mean()) / fstd
+            
+            # Calculates the distance of the current point to any special
+            # location set in the 'loc' parameter. If only special locations
+            # are to be analysed, then skips all other ones. If the input
+            # array is one dimensional, then do the analysis anyway.
+            if dim == 1:
+                dist = numpy.asarray([0.])
+            else:
+                try:
+                    dist = numpy.asarray([((item[0] - (lon180[i])) **
+                        2 + (item[1] - lat[j]) ** 2) for item in loc])
+                except:
+                    dist = []
+            if (dist > R2).all() & (loc != 'all') & onlyloc:
+                continue
             
             # Determines the lag-1 autocorrelation coefficient to be used in
             # the significance test from the input parameter
@@ -638,8 +677,8 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
                 except:
                     if debug:
                         warnings.warn('Unable to locate standard deviation '
-                                      'for (%s, %s) using mean value instead' %
-                                      (X, Y), Warning)
+                            'for (%s, %s) using mean value instead' %
+                            (X, Y), Warning)
                     alpha_ij = alpha['mean']
             else:
                 alpha_ij = alpha['mean']
@@ -656,16 +695,29 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
             fftperiod = 1. / fftfreqs
             psel = pylab.find(period <= pmax.max())
             
-            
-            
+            # Calculates the Fourier transform for the first and the second
+            # halves ot the time-series for later trend analysis.
+            fft_1 = numpy.fft.fft(fz[fft_ia], fft_N)[1:fft_N/2] / fft_N ** 0.5
+            fft_2 = numpy.fft.fft(fz[fft_ib], fft_N)[1:fft_N/2] / fft_N ** 0.5
+            fft_p1 = abs(fft_1 * fft_1.conj())
+            fft_p2 = abs(fft_2 * fft_2.conj())
             
             # Creates FFT return array and stores the spectrum accordingly
             try:
                 fft_spectrum[:, j, i] = fft_power * fstd2
+                fft_spectrum1[:, j, i] = fft_p1 * fstd2
+                fft_spectrum2[:, j, i] = fft_p2 * fstd2
             except:
                 fft_spectrum = (numpy.ma.empty([len(fft_power), b, a]) *
                     numpy.nan)
+                fft_spectrum1 = (numpy.ma.empty([fft_N2, b, a]) *
+                    numpy.nan)
+                fft_spectrum2 = (numpy.ma.empty([fft_N2, b, a]) *
+                    numpy.nan)
+                #
                 fft_spectrum[:, j, i] = fft_power * fstd2
+                fft_spectrum1[:, j, i] = fft_p1 * fstd2
+                fft_spectrum2[:, j, i] = fft_p2 * fstd2
 
             # Performs the significance test according to the article by
             # Torrence and Compo (1998). The wavelet power is significant
@@ -689,18 +741,27 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
             # significance according to Torrence and Compo (1998) eq. 24. The
             # scale_avg_full variable is used multiple times according to the
             # selected periods range.
+            #
+            # Also calculates the average Fourier power spectrum.
             Cdelta = mother.cdelta
             scale_avg_full = (scales * numpy.ones((c, 1))).transpose()
             scale_avg_full = power / scale_avg_full
             for k in range(C):
                 if k == 0:
-                    sel = range(0, int(J+1))
+                    sel = pylab.find((period >= pmin[0]) &
+                        (period <= pmax[-1]))
                     pminmax = [period[sel[0]], period[sel[-1]]]
+                    les = pylab.find((fftperiod >= pmin[0]) &
+                        (fftperiod <= pmax[-1]))
+                    fminmax = [fftperiod[les[0]], fftperiod[les[-1]]]
                 else:
                     sel = pylab.find((period >= pmin[k - 1]) &
-                                     (period < pmax[k - 1]))
+                        (period < pmax[k - 1]))
                     pminmax = [pmin[k-1], pmax[k-1]]
-
+                    les = pylab.find((fftperiod >= pmin[k - 1]) &
+                        (fftperiod <= pmax[k - 1]))
+                    fminmax = [fftperiod[les[0]], fftperiod[les[-1]]]
+                
                 scale_avg = numpy.ma.array((dj * dt / Cdelta *
                     scale_avg_full[sel, :].sum(axis=0)))
                 scale_avg_signif, tmp = wavelet.significance(1., dt, scales,
@@ -719,18 +780,24 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
                 # where the cone of influence spans the highest analyzed
                 # period. In the end, the returned value for the trend is in
                 # units**2.
+                #
+                # Also calculates the trends in the Fourier power spectrum.
+                # Note that the FFT power spectrum is already multiplied by
+                # the signal's standard deviation.
                 incoi = pylab.find(coi >= pmax[-1])
                 if len(incoi) == 0:
                     incoi = numpy.arange(c)
                 polyw = numpy.polyfit(t[incoi], scale_avg[incoi].data, 1)
                 wavelet_trend[k, j, i] = polyw[0] * fstd2
+                fft_trend[k, j, i] = (fft_spectrum2[les, j, i] -
+                    fft_spectrum1[les, j, i]).mean() / fft_dt
                 if k == 0:
                     polyz = numpy.polyfit(t, fz * fstd, 1)
                     trend[j, i] = polyz[0]
 
                 # Plots the wavelet analysis results for the individual
                 # series. The plot is only generated if the dimension of the
-                # input variable  z is one, if a special location is within a
+                # input variable z is one, if a special location is within a
                 # range of the search radius R and if the show or save
                 # parameters are set.
                 if (show | (save != '')) & ((k in sel_periods)):
@@ -740,13 +807,13 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
                         isloc = True
                         if (dist < R2).any():
                             try:
-                                hloc.append(lon[i])
+                                hloc.append(loc[(dist < R2)][0, 0])
                             except:
                                 pass                            
                         if save:
                             try:
-                                sv = '%s/tz%s%s' % (save, prefix, 
-                                    common.num2latlon(lon[i], lat[j]))
+                                sv = '%s/tz_%s_%s_%d' % (save, prefix, 
+                                    common.num2latlon(lon[i], lat[j]), k)
                             except:
                                 sv = '%s' % (save)
                         else:
@@ -760,38 +827,43 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
                             labels=labels, normalized=True, std=fstd,
                             ztrend=polyz, wtrend=polyw, show=show, save=sv,
                             levels=levels, cmap=cmap)
+
         # Saves and/or plots the intermediate results as zonal temporal
         # diagrams.
         if dsave:
             for k in range(C):
                 if k == 0:
-                    sv = '%s/%s/xt%s%s.gz' % (dsave, 'global', prefix,
+                    sv = '%s/%s/%s_%s.xt.gz' % (dsave, 'global', prefix,
                         common.num2latlon(lon[i], lat[j], mode='each')[0])
                 else:
-                    sv = '%s/%s/xt%s%s.gz' % (dsave, title[k - 1].lower(),
+                    sv = '%s/%s/%s_%s.xt.gz' % (dsave, name[k - 1].lower(),
                         prefix,
                         common.num2latlon(lon[i], lat[j], mode='each')[0])
                 if mem_error:
-                    filemngmnt.save_map(lon, tm, avg_spectrum[k, :, :].data,
+                    fm.save_map(lon, tm, avg_spectrum[k, :, :].data,
                         sv, lat[j])
                 else:
-                    filemngmnt.save_map(lon, tm, avg_spectrum[k, :, j, :].data,
+                    fm.save_map(lon, tm, avg_spectrum[k, :, j, :].data,
                         sv, lat[j])
-        if ((dim > 1) & (show | (save != '')) & (not onlyloc)):
+        
+        if ((dim > 1) and (show or (save != '')) & (not onlyloc) and 
+                len(hloc) > 0):
+            hloc = common.lon360(numpy.unique(hloc))
             if save:
-                sv = '%s/xt%s%s' % (save, prefix,
+                sv = '%s/xt_%s_%s' % (save, prefix,
                     common.num2latlon(lon[i], lat[j], mode='each')[0])
             else:
                 sv = ''
             if mem_error:
+                # To include overlapping original signal, use zz=zero
                 mapping.hovmoller(lon, tm, avg_spectrum[1:, :, :],
-                    zo=avg_spectrum_signif[1:, j, :], zz=zero, title=title,
+                    zo=avg_spectrum_signif[1:, j, :], title=title,
                     crange=crange, show=show, save=sv, labels=hlabels,
                     loc=hloc, cmap=cmap, bottom='avg', right='avg',
                     std=std_map[j, :])
             else:
                 mapping.hovmoller(lon, tm, avg_spectrum[1:, :, j, :],
-                    zo=avg_spectrum_signif[1:, j, :], zz=zero, title=title,
+                    zo=avg_spectrum_signif[1:, j, :], title=title,
                     crange=crange, show=show, save=sv, labels=hlabels,
                     loc=hloc, cmap=cmap, bottom='avg', right='avg',
                     std=std_map[j, :])
@@ -811,16 +883,18 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
         result['power_spectrum'] = power * fstd2
         result['power_significance'] = sig95
     result['global_power'] = global_power
-    if not mem_error:
-        result['scale_spectrum'] = avg_spectrum
+    result['scale_spectrum'] = avg_spectrum
     if fpath:
         result['lon'] = lon
         result['lat'] = lat
     result['scale_significance'] = avg_spectrum_signif
     result['trend'] = trend
     result['wavelet_trend'] = wavelet_trend
-    result['fft'] = fft_spectrum
+    result['fft_power'] = fft_spectrum
+    result['fft_first'] = fft_spectrum1
+    result['fft_second'] = fft_spectrum2
     result['fft_period'] = fftperiod
+    result['fft_trend'] = fft_trend
     return result
 
 

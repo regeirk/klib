@@ -34,23 +34,10 @@ from scipy.stats import nanmean, nanstd
 from mpl_toolkits.basemap import Basemap, pyproj, cm, shiftgrid
 
 import common
+import graphics
 
 
 def __init__(show=False):
-    fontsize = 'medium'
-    params = {'figure.figsize': [8, 11],
-              'font.family': 'serif',
-              'font.sans-serif': ['Helvetica'],
-              'font.size': 18,
-              'font.stretch': 'ultra-condensed',
-              'text.fontsize': fontsize,
-              'xtick.labelsize': fontsize,
-              'ytick.labelsize': fontsize,
-              'axes.titlesize': fontsize,
-              'text.usetex': True,
-              'text.latex.unicode': True
-             }
-    rcParams.update(params)
     if show:
         pylab.ion()
 
@@ -129,11 +116,12 @@ class Basemap(Basemap):
         return poly
 
 
-def map(lon, lat, z, tm=None, projection='cyl', save='', ftype='png',
-        crange=None, cmap=cm.GMT_no_green, show=False, shiftgrd=0.,
-        orientation='landscape', title='', label='', units='', subplot=None,
-        adjustprops=None, loc=[], xlim=None, ylim=None, xstep=None,
-        ystep=None, etopo=False, profile=True, hook=None, **kwargs):
+def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
+        crange=None, crange2=None, cmap=cm.GMT_no_green, show=False,
+        shiftgrd=0., orientation='landscape', title='', label='', units='',
+        subplot=None, adjustprops=None, loc=[], xlim=None, ylim=None,
+        xstep=None, ystep=None, etopo=False, profile=True, hook=None, 
+        **kwargs):
     """Generates maps.
 
     The maps can be either saved as image files or simply showed on
@@ -150,6 +138,8 @@ def map(lon, lat, z, tm=None, projection='cyl', save='', ftype='png',
             For tri-dimensional TxMxN arrays, eather a sequence of maps
             is generated if T has the same length as tm or, in case tm
             is not set, T maps are plotted on the save figure.
+        z2 (array like, optional) :
+            Second variable to be plotted using simple line contours.
         t (array like, optional) :
             Time array. It should contain values in matplotlib date
             format (i.e. number of days since 0001-01-01 UTC).
@@ -172,6 +162,8 @@ def map(lon, lat, z, tm=None, projection='cyl', save='', ftype='png',
         crange (array like, optional) :
             Sets the color range of the maps. If not given then the
             range is calculated from the input data.
+        crange2 (array like, optional) :
+            Sets the contour line interval.
         cmap (colormap, optional) :
             Sets the colormap to be used in the plots. The default is
             the Generic Mapping Tools (GMT) no green.
@@ -259,14 +251,23 @@ def map(lon, lat, z, tm=None, projection='cyl', save='', ftype='png',
 
     # Shifts the longitude and data grid if applicable and determines central
     # latitude and longitude for the map.
-    if xlim == None:
-        xlim = [lon.min(), lon.max()]
-    if ylim == None:
-        ylim = [lat.min(), lat.max()]
     lon180 = common.lon180(lon)
+    if xlim == None:
+        try:
+            mask = ~z.mask.all(axis=0).all(axis=0)
+            xlim = [lon180[mask].min(), lon180[mask].max()]
+        except:
+            xlim = [lon.min(), lon.max()]
+    if ylim == None:
+        try:
+            mask = ~z.mask.all(axis=0).all(axis=1)
+            ylim = [lat[mask].min(), lat[mask].max()]
+        except:
+            ylim = [lat.min(), lat.max()]
     lon0 = numpy.mean(xlim)
     lat0 = numpy.mean(ylim)
-    if (shiftgrd != 0) | (projection in ['ortho']):
+    if (shiftgrd != 0): # | (projection in ['ortho', 'robin', 'moll']):
+        dx, dy = lon[1] - lon[0], lat[1] - lat[0]
         lon = lon180
         shift = pylab.find(pylab.diff(lon) < 0) + 1
         try:
@@ -275,6 +276,16 @@ def map(lon, lat, z, tm=None, projection='cyl', save='', ftype='png',
         except:
           pass
         #z, lon = shiftgrid(shiftgrd, z, lon0)
+        
+        # Pad borders with NaN's to avoid distorsions
+        #lon = numpy.concatenate([[lon[0] - dx], lon, [lon[-1] + dx]])
+        #lat = numpy.concatenate([[lat[0] - dy], lat, [lat[-1] + dy]])
+        #nan = numpy.ma.empty((c, 1, a)) * numpy.nan
+        #nan.mask = True
+        #z = numpy.ma.concatenate([nan, z, nan], axis=1)
+        #nan = numpy.ma.empty((c, b+2, 1)) * numpy.nan
+        #nan.mask = True
+        #z = numpy.ma.concatenate([nan, z, nan], axis=2)
     
     # Loads topographic data, if appropriate.
     if etopo:
@@ -299,6 +310,7 @@ def map(lon, lat, z, tm=None, projection='cyl', save='', ftype='png',
 
         xmin, xmax = z.min(), z.max()
         rmin, rmax = crange.min(), crange.max()
+        
         if (xmin < rmin) & (xmax > rmax):
             extend = 'both'
         elif (xmin < rmin) & (xmax <= rmax):
@@ -309,6 +321,9 @@ def map(lon, lat, z, tm=None, projection='cyl', save='', ftype='png',
             extend = 'neither'
         else:
             raise Warning, 'Unable to determine extend'
+    if type(z2).__name__ != 'NoneType' and crange2 == None:
+        cmajor2, cminor2, crange2, cticks2, extend2 = common.step(z2,
+            returnrange=True)
 
     # Turning interactive mode on or off according to show parameter.
     if show == False:
@@ -320,14 +335,6 @@ def map(lon, lat, z, tm=None, projection='cyl', save='', ftype='png',
 
     # Sets the figure properties according to the orientation parameter and to
     # the data dimensions.
-    if orientation == 'landscape':
-        figprops = dict(figsize=(11, 8))
-    elif orientation == 'portrait':
-        figprops = dict(figsize=(8, 11))
-    elif orientation == 'squared':
-        figprops = dict(figsize=(8, 8))
-    else:
-        raise Warning, 'Orientation \'%s\' not allowed.' % (orientation, )
     if adjustprops == None:
         if projection in ['cyl', 'eqdc', 'poly', 'omerc', 'vandg', 'nsper']:
             adjustprops = dict(left=0.1, bottom=0.15, right=0.95, top=0.9,
@@ -335,12 +342,6 @@ def map(lon, lat, z, tm=None, projection='cyl', save='', ftype='png',
         else:
             adjustprops = dict(left=0.05, bottom=0.15, right=0.95, top=0.9,
                                wspace=0.05, hspace=0.2)
-
-    # Setting the zonal and meridional limits of the map, if appropriate
-    if xlim == None:
-        xlim = [min(lon), max(lon)]
-    if ylim == None:
-        ylim = [min(lat), max(lat)]
 
     # Sets the meridian and the parallel coordinates and necessary parameters
     # depending on the chosen projection.
@@ -350,12 +351,14 @@ def map(lon, lat, z, tm=None, projection='cyl', save='', ftype='png',
         ystep = int(common.step(ylim, 3, kind='polar')[0])
     merid = numpy.arange(10 * int(min(xlim) / 10 - 2),
                          10 * int(max(xlim) / 10 + 3), xstep)
-    if (max(ylim) - min(ylim)) > 130 | (projection in ['ortho', 'robin']):
-        paral = numpy.array([-(66. + 33. / 60. + 38. / (60. * 60.)),
-                             -(23. + 26. / 60. + 22. / (60. * 60.)), 0.,
-                              (23. + 26. / 60. + 22. / (60. * 60.)),
-                              (66. + 33. / 60. + 38. / (60. * 60.))])
-        paral = numpy.round(paral)
+    if (max(ylim) - min(ylim)) > 130 | (projection in ['ortho', 'robin', 
+        'moll']):
+        #paral = numpy.array([-(66. + 33. / 60. + 38. / (60. * 60.)),
+        #                     -(23. + 26. / 60. + 22. / (60. * 60.)), 0.,
+        #                      (23. + 26. / 60. + 22. / (60. * 60.)),
+        #                      (66. + 33. / 60. + 38. / (60. * 60.))])
+        #paral = numpy.round(paral)
+        paral = numpy.array([-60, -30, 0, 30, 60])
     else:
         paral = numpy.arange(numpy.floor(min(ylim) / ystep) * ystep,
                              numpy.ceil(max(ylim) / ystep) * ystep + ystep,
@@ -395,7 +398,7 @@ def map(lon, lat, z, tm=None, projection='cyl', save='', ftype='png',
         plrows, plcols = subplot
     except:
         if type(tm).__name__ in ['NoneType', 'float']:
-            if orientation == 'landscape':
+            if orientation in ['landscape', 'worldmap']:
                 plcols = min(3, c)
                 plrows = numpy.ceil(float(c) / plcols)
             elif orientation == 'portrait':
@@ -418,8 +421,7 @@ def map(lon, lat, z, tm=None, projection='cyl', save='', ftype='png',
         stdout.write(s)
         stdout.flush()
 
-    fig = pylab.figure(**figprops)
-    fig.subplots_adjust(**adjustprops)
+    fig = graphics.figure(fp=dict(), ap=adjustprops, orientation=orientation)
     for n in range(c):
         t2 = time()
         if plcols * plrows > 1:
@@ -427,48 +429,60 @@ def map(lon, lat, z, tm=None, projection='cyl', save='', ftype='png',
         else:
             fig.clear()
             ax = pylab.subplot(plcols, plrows, 1)
+        
         if (projection in ['ortho', 'robin', 'moll']):
             m = Basemap(projection=projection, lat_0=lat0, lon_0=lon0, *kwargs)
-            dx = 2. * numpy.pi * m.rmajor / a
-            nx = int((m.xmax - m.xmin) / dx) + 1
-            ny = int((m.ymax - m.ymin) / dx) + 1
-            dat, x, y = m.transform_scalar(z[n, :, :], lon, lat, nx, ny,
-                returnxy=True)
-            mlabels = plabels = [0, 0, 0, 0]
+            xoffset = (m.urcrnrx - m.llcrnrx) / 50.
         elif projection in ['aea', 'cyl', 'eqdc', 'poly', 'omerc', 'vandg', 
                             'nsper', 'lcc']:
             m = Basemap(projection=projection, llcrnrlat=min(ylim),
                         urcrnrlat=max(ylim), llcrnrlon=min(xlim),
                         urcrnrlon=max(xlim), **kwargs)
-            x, y = m(*numpy.meshgrid(lon, lat))
-            dat = z[n, :, :]
-            if plcols * plrows > 1:
-                if (n % plcols) == 0:
-                    plabels = plabels = [1, 0, 0, 0]
-                else:
-                    plabels = [0, 0, 0, 0]
-                if (n >= c - plcols):
-                    mlabels = [0, 0, 0, 1]
-                else:
-                    mlabels = [0, 0, 0, 0]
-            else:
-                mlabels = [0, 0, 0, 1]
-                plabels = [1, 0, 0, 0]
+            xoffset = None
         else:
             raise Warning, 'Projection \'%s\' not implemented.' % (projection)
 
+        x, y = m(*numpy.meshgrid(lon, lat))
+        dat = z[n, :, :]
+        
+        # Set the merdians' and parallels' labels
+        if plcols * plrows > 1:
+            if (n % plcols) == 0:
+                plabels =  [1, 0, 0, 0]
+            else:
+                plabels = [0, 0, 0, 0]
+            if (n >= c - plcols):
+                mlabels = [0, 0, 0, 1]
+            else:
+                mlabels = [0, 0, 0, 0]
+        else:
+            mlabels = [0, 0, 0, 1]
+            plabels = [1, 0, 0, 0]
+        if projection in ['ortho']:
+            plabels = [0, 0, 0, 0]
+        if projection in ['geos', 'ortho', 'aeqd', 'moll']:
+            mlabels = [0, 0, 0, 0]
+
         # Plots locations
         for item in loc:
-            m.scatter(item[0], item[1], s=13, c='w', marker='o', alpha=1, 
+            m.scatter(item[0], item[1], s=24, c='w', marker='o', alpha=1, 
                       zorder=99)
 
         # Plot contour
         im = m.contourf(x, y, dat, crange, cmap=cmap, extend=extend, hold='on')
 
+        if type(z2).__name__ != 'NoneType':
+            dat2 = z2[n, :, :]
+            im2 = m.contour(x, y, dat2, crange2, colors='k', hatch='x',
+                hold='on', linewidths=numpy.linspace(0.25, 2., len(crange2)),
+                alpha=0.6)
+            #pylab.clabel(im2, fmt='%.1f')
+
         # Plot topography, if appropriate
         if etopo:
             xe, ye = m(*numpy.meshgrid(ex, ey))
-            cs = m.contour(xe, ye, ez, er, colors='k', linestyles='-', alpha=0.3, hold='on')
+            cs = m.contour(xe, ye, ez, er, colors='k', linestyles='-',
+                alpha=0.3, hold='on')
 
         # Run hook function, if appropriate
         try:
@@ -482,12 +496,12 @@ def map(lon, lat, z, tm=None, projection='cyl', save='', ftype='png',
         if projection != 'nsper':
             m.drawmapboundary(fill_color='white')
         m.drawmeridians(merid, linewidth=0.5, labels=mlabels)
-        m.drawparallels(paral, linewidth=0.5, labels=plabels)
-       
+        m.drawparallels(paral, linewidth=0.5, labels=plabels, xoffset=xoffset)
+        
         # Draws colorbar
         if orientation == 'squared':
             cx = pylab.axes([0.25, 0.07, 0.5, 0.03])
-        elif orientation == 'landscape':
+        elif orientation  in ['landscape', 'worldmap']:
             cx = pylab.axes([0.2, 0.05, 0.6, 0.03])
         elif orientation == 'portrait':
             cx = pylab.axes([0.25, 0.05, 0.5, 0.02])
@@ -559,8 +573,8 @@ def map(lon, lat, z, tm=None, projection='cyl', save='', ftype='png',
 
         if profile:
             stdout.write(len(s) * '\b')
-            s = 'Plotting %d map%s... %s ' % (c, plural, common.profiler(c, n + 1,
-                0, t1, t2),)
+            s = 'Plotting %d map%s... %s ' % (c, plural, common.profiler(c, 
+                n + 1, 0, t1, t2),)
             stdout.write(s)
             stdout.flush()
 
@@ -784,23 +798,23 @@ def hovmoller(lon, tm, z, zo=None, zz=None, title=None, label=None,
     # Sets the figure properties according to the orientation parameter and to
     # the data dimensions including the subplot number of rows and columns.
     if orientation == 'landscape':
-        figprops = dict(figsize=(7.33, 5.33), dpi=96)
+        #figprops = dict(figsize=(7.33, 5.33), dpi=96)
         plcols = c
         plrows = 1
     elif orientation == 'portrait':
-        figprops = dict(figsize=(5.33, 7.33), dpi=96)
+        #figprops = dict(figsize=(5.33, 7.33), dpi=96)
         plcols = 1
         plrows = c
     elif orientation == 'squared':
-        figprops = dict(figsize=(5.33, 5.33), dpi=96)
+        #figprops = dict(figsize=(5.33, 5.33), dpi=96)
         plrows = plcols = numpy.ceil(c ** 0.5)
     else:
         raise Warning, 'Orientation \'%s\' not allowed.' % (orientation, )
     if adjustprops == None:
         adjustprops = dict(left=0.1, bottom=0.15, right=0.99, top=0.9,
                            wspace=0.05, hspace=0.02)
-    fig = pylab.figure(**figprops)
-    fig.subplots_adjust(**adjustprops)
+    
+    fig = graphics.figure(ap=adjustprops, orientation=orientation)
 
     # Some figure parameters definitions and initializations
     if bottom:
@@ -860,6 +874,7 @@ def hovmoller(lon, tm, z, zo=None, zz=None, title=None, label=None,
             pylab.contour(lon, tm, o, [0, 1],
                 colors='k', linestyles='-', linewidths=1.)
 
+        # Plots the contour. Uses assigned data for power hovmollers.
         pylab.contourf(lon, tm, z[k, :, :].data, crange, cmap=cmap,
             extend=extend)
 
@@ -890,7 +905,7 @@ def hovmoller(lon, tm, z, zo=None, zz=None, title=None, label=None,
             rightmax = max([numpy.nanmax(rz), rightmax])
 
         for i in loc:
-            pylab.plot([i, i], [tm.min(), tm.max()], 'D', markersize=10,
+            pylab.plot([i, i], [tm.min(), tm.max()], 'D', markersize=14,
                 color='w', alpha=1)
 
         if bottom:
@@ -987,9 +1002,6 @@ def hovmoller(lon, tm, z, zo=None, zz=None, title=None, label=None,
 
     ax.set_xlim([lon.min(), lon.max()])
     ax.set_ylim([tm.min(),  tm.max()])
-    tickFmt = pylab.matplotlib.dates.DateFormatter("%Y")
-    ymajor = pylab.matplotlib.dates.YearLocator(1)
-    yminor = pylab.matplotlib.dates.MonthLocator(range(1,13), bymonthday=15)
     if xunits == 'deg':
         xstep, xstep1 = common.step(lon, 2)
     elif xunits == 'km':
@@ -998,10 +1010,7 @@ def hovmoller(lon, tm, z, zo=None, zz=None, title=None, label=None,
     xminor = pylab.matplotlib.ticker.MultipleLocator(xstep1)
     ax.xaxis.set_major_locator(xmajor)
     ax.xaxis.set_minor_locator(xminor)
-    ax.yaxis.set_major_locator(ymajor)
-    ax.yaxis.set_minor_locator(yminor)
-    ax.yaxis.set_major_formatter(tickFmt)
-    ax.format_ydata = pylab.matplotlib.dates.DateFormatter('%Y-%m-%d')
+    graphics.timeformat(ax, dt=tm[-1]-tm[0], axis='y')
     if xunits == 'deg':
         ax.set_xticklabels([common.num2latlon(i, 0, mode='each', x180=False,
             dtype='label')[1] for i in ax.get_xticks()])

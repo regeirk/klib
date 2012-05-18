@@ -13,6 +13,8 @@ from numpy import (angle, array, asarray, concatenate, cos, diff, floor, log10,
                   pi, sign, sqrt, ceil, floor, arange, loadtxt)
 from pylab import find
 
+daysinyear = 365.2421896698
+
 def num2latlon(x, y, mode='full', padding=True, hemispherefirst=False,
                x180=True, dtype='float'):
     """Converts numerical longitude and latitude to text.
@@ -465,7 +467,7 @@ basins = dict(
     ),
     tas = dict(
         id = 6,
-        longname = 'Tasman Sean',
+        longname = 'Tasman Sea',
         shortname = 'Tasman Sea',
     ),
     ben = dict(
