@@ -52,6 +52,7 @@ try:
     reload(common)
     reload(file)
     reload(stats)
+    reload(ocean)
     reload(graphics)
     reload(interpolate)
 except:
@@ -60,6 +61,7 @@ except:
     import file
     import file as filemngmnt # for backwards compatibility
     import stats
+    import dynamics
     import graphics
     import interpolate
 

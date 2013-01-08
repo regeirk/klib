@@ -9,8 +9,9 @@ __all__ = ['num2latlon', 'lon180', 'lon360', 'profiler', 's2hms', 'distance',
 
 import re
 from time import time
-from numpy import (angle, array, asarray, concatenate, cos, diff, floor, log10,
-                  pi, sign, sqrt, ceil, floor, arange, loadtxt)
+from numpy import (angle, array, asarray, concatenate, cos, diff, floor, 
+    iscomplex, log10, pi, sign, sqrt, ceil, floor, arange, loadtxt, zeros, 
+    cumsum)
 from pylab import find
 
 daysinyear = 365.2421896698
@@ -208,7 +209,7 @@ def distance(lon, lat, units='nm', origin=False):
     It uses the 'Plane Sailing' method applying simple geometry to
     calculate the bearing of the path between position pairs.
 
-    Based uppon CSIRO, Phil Morgan & Steve Rintoul sw_dist function
+    Based upon CSIRO, Phil Morgan & Steve Rintoul sw_dist function
     from the Matlab Seawater toolbox.
 
     PARAMETERS
@@ -349,7 +350,10 @@ def step(x, n=None, kind='linear', s0=2., returnrange=False):
     else:
         raise Warning, 'Unknown kind \'%s\'' % (kind)
 
-    x = asarray(x)
+    if type(x).__name__ in ['list']:
+        x = asarray(x)
+    if iscomplex(x).any():
+        x = 0.5* (x.real + x.imag)
     xmin, xmax, xmean, xstd = x.min(), x.max(), x.mean(), x.std()
     if n:
         xstep = (xmax - xmin) / n
@@ -428,6 +432,71 @@ def meshgrid2(*arrs):
         ans.append(arr2)
 
     return tuple(ans[::-1])
+
+
+def simpson(y):
+    """Simpson-rule column-wise cumulative summation.
+
+    Numerical approximation of a function F(x) such that 
+    Y(X) = dF/dX.  Each column of the input matrix Y represents
+    the value of the integrand  Y(X)  at equally spaced points
+    X = 0,1,...size(Y,1).
+
+    The output is a matrix  F of the same size as Y.
+    The first row of F is equal to zero and each following row
+    is the approximation of the integral of each column of matrix
+    Y up to the givem row.
+
+    simpson assumes continuity of each column of the function Y(X)
+    and uses Simpson rule summation.
+
+    Similar to the command F = cumsum(Y), exept for zero first
+    row and more accurate summation (under the assumption of
+    continuous integrand Y(X)).
+
+    See also numpy.cumsum, numpy.sum, numpy.trapz
+
+    REFERENCES
+    
+    Based upon http://www-pord.ucsd.edu/~matlab/stream.htm
+    """
+    # 3-points interpolation coefficients to midpoints.
+    # Second-order polynomial (parabolic) interpolation coefficients
+    # from  Xbasis = [0 1 2]  to  Xint = [.5 1.5]
+    c1, c2, c3 = 3./8., 6./8., -1./8.;
+
+    # Checks input arguments
+    y = asarray(y)
+    # Determine the size of the input and make column if vector
+    ist = False                   # if to be transposed
+    a = y.shape[0]
+    if a == 1:
+        ist = True
+        y = y.transpose();
+        a = y.shape[0]
+    f = zeros(y.shape);
+    
+    # If only 2 elements in columns - simple sum divided by 2
+    if a == 2:
+        f[1, :] = (y[0, :]+y[1]) / 2;
+    # If more than two elements in columns - Simpson summation
+    else:
+        # Interpolate values of Y to all midpoints
+        n = arange(0, a-2)
+        f[n+1, :] = c1 * y[n, :] + c2 * y[n+1, :] + c3 * y[n+2, :]
+        f[n+2, :] = f[n+2, :] + c3 * y[n, :] + c2 * y[n+1, :] + c1 * y[n+2, :]
+        f[[1], :] = f[[1], :] * 2
+        f[[a-1], :] = f[[a-1], :] * 2
+        # Now Simpson (1,4,1) rule
+        n = arange(1, a)
+        f[n, :] = 2 * f[n, :] + y[n-1, :] + y[n, :]
+        # Cumulative sum, 6 - denom. from the Simpson rule
+        f = cumsum(f, axis=0) / 6;
+
+    # Transpose output if necessary
+    if ist:
+        f = f.transpose()
+    return f
 
 
 class etopo:

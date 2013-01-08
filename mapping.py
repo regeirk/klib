@@ -27,9 +27,9 @@ import pylab
 
 from time import time
 from sys import stdout
-from matplotlib import dates
-from matplotlib import rcParams
+from matplotlib import dates, rcParams
 from matplotlib.patches import Polygon
+from matplotlib.font_manager import FontProperties
 from scipy.stats import nanmean, nanstd
 from mpl_toolkits.basemap import Basemap, pyproj, cm, shiftgrid
 
@@ -117,11 +117,11 @@ class Basemap(Basemap):
 
 
 def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
-        crange=None, crange2=None, cmap=cm.GMT_no_green, show=False,
-        shiftgrd=0., orientation='landscape', title='', label='', units='',
-        subplot=None, adjustprops=None, loc=[], xlim=None, ylim=None,
-        xstep=None, ystep=None, etopo=False, profile=True, hook=None, 
-        **kwargs):
+        crange=None, crange2=None, extend=None, cmap=cm.GMT_no_green, 
+        show=False, shiftgrd=0., orientation='landscape', title='', label='', 
+        units='', subplot=None, adjustprops=None, loc=[], xlim=None, ylim=None,
+        lon0=None, xstep=None, ystep=None, etopo=False, profile=True, 
+        legend=None, hook=None, **kwargs):
     """Generates maps.
 
     The maps can be either saved as image files or simply showed on
@@ -140,6 +140,9 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
             is not set, T maps are plotted on the save figure.
         z2 (array like, optional) :
             Second variable to be plotted using simple line contours.
+
+            If the data is in complex form, i.e. u + j*v, then vectors
+            are plotted instead.
         t (array like, optional) :
             Time array. It should contain values in matplotlib date
             format (i.e. number of days since 0001-01-01 UTC).
@@ -164,6 +167,10 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
             range is calculated from the input data.
         crange2 (array like, optional) :
             Sets the contour line interval.
+        extend (string, optional) : ['neither' | 'both' | 'min' | 'max']
+            Unless this is 'neither', contour levels are automatically
+            added to one or both ends of the range so that all data
+            are included.
         cmap (colormap, optional) :
             Sets the colormap to be used in the plots. The default is
             the Generic Mapping Tools (GMT) no green.
@@ -205,6 +212,8 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
         profile (boolean, optional) :
             Turns profiler on/off. If set to true (default) outputs the
             ETA and other information on screen.
+        legend (tuple, optional) :
+            Sets the legend text for the map.
         hook (function, optional) :
             Executes a hook function after the plot. The map instance
             is passed along as parameter.
@@ -241,6 +250,12 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
     else:
         raise Warning, ('Map plots require either bi-dimensional or tri-'
                         'dimensional data.')
+
+    if type(z2).__name__ != 'NoneType':
+        z2 = numpy.ma.asarray(z2)
+        z2.mask = numpy.isnan(z2)
+        z2 = z2.reshape(c, b, a)
+    
     if lon.size != a:
         raise Warning, 'Longitude and data lengths do not match.'
     if lat.size != b:
@@ -264,18 +279,21 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
             ylim = [lat[mask].min(), lat[mask].max()]
         except:
             ylim = [lat.min(), lat.max()]
-    lon0 = numpy.mean(xlim)
+    if lon0 == None:
+        lon0 = numpy.mean(xlim)
     lat0 = numpy.mean(ylim)
+    # TODO: Check shiftgrid and projections
     if (shiftgrd != 0): # | (projection in ['ortho', 'robin', 'moll']):
         dx, dy = lon[1] - lon[0], lat[1] - lat[0]
         lon = lon180
-        shift = pylab.find(pylab.diff(lon) < 0) + 1
+        shift = pylab.find(pylab.diff(lon) < 0)[0] + 1
         try:
           lon = numpy.roll(lon, -shift)
+          lon180 = numpy.roll(lon180, -shift)
           z = numpy.roll(z, -shift)
         except:
           pass
-        #z, lon = shiftgrid(shiftgrd, z, lon0)
+        #z, lon = shiftgrid(shiftgrd, z, lon)
         
         # Pad borders with NaN's to avoid distorsions
         #lon = numpy.concatenate([[lon[0] - dx], lon, [lon[-1] + dx]])
@@ -293,6 +311,15 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
         ex = common.etopo.x
         ey = common.etopo.y
         er = -numpy.arange(1000, 12000, 1000)
+        #
+        if (shiftgrd != 0): #| (projection in ['ortho', 'robin', 'moll']):
+            ex = common.lon180(ex)
+            shift = pylab.find(pylab.diff(ex) < 0)[0] + 1
+            try:
+              ex = numpy.roll(ex, -shift)
+              ez = numpy.roll(ez, -shift)
+            except:
+              pass
 
     # Setting the color ranges
     if crange == None:
@@ -311,16 +338,17 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
         xmin, xmax = z.min(), z.max()
         rmin, rmax = crange.min(), crange.max()
         
-        if (xmin < rmin) & (xmax > rmax):
-            extend = 'both'
-        elif (xmin < rmin) & (xmax <= rmax):
-            extend = 'min'
-        elif (xmin >= rmin) & (xmax > rmax):
-            extend = 'max'
-        elif (xmin >= rmin) & (xmax <= rmax):
-            extend = 'neither'
-        else:
-            raise Warning, 'Unable to determine extend'
+        if extend == None:
+            if (xmin < rmin) & (xmax > rmax):
+                extend = 'both'
+            elif (xmin < rmin) & (xmax <= rmax):
+                extend = 'min'
+            elif (xmin >= rmin) & (xmax > rmax):
+                extend = 'max'
+            elif (xmin >= rmin) & (xmax <= rmax):
+                extend = 'neither'
+            else:
+                raise Warning, 'Unable to determine extend'
     if type(z2).__name__ != 'NoneType' and crange2 == None:
         cmajor2, cminor2, crange2, cticks2, extend2 = common.step(z2,
             returnrange=True)
@@ -392,7 +420,17 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
         kwargs['lat_0'] = (min(ylim) + max(ylim)) / 2.
         kwargs['lat_1'] = max(ylim) - (max(ylim) - min(ylim)) / 4.
         kwargs['lat_2'] = min(ylim) + (max(ylim) - min(ylim)) / 4.
-
+    elif projection in ['ortho', 'robin', 'moll']:
+        kwargs['lat_0'] = lat0
+        kwargs['lon_0'] = lon0
+    if projection in ['aea', 'cyl', 'eqdc', 'poly', 'omerc', 'vandg',
+                      'nsper', 'lcc']:
+        kwargs['llcrnrlat'] = min(ylim)
+        kwargs['urcrnrlat'] = max(ylim)
+        kwargs['llcrnrlon'] = min(xlim)
+        kwargs['urcrnrlon'] = max(xlim)
+    
+    
     # Setting the subplot parameters in case multiple maps per figure.
     try:
         plrows, plcols = subplot
@@ -425,22 +463,17 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
     for n in range(c):
         t2 = time()
         if plcols * plrows > 1:
-            ax = pylab.subplot(plrows, plcols, n + 1)
+            ax = fig.add_subplot(plrows, plcols, n + 1)
         else:
             fig.clear()
-            ax = pylab.subplot(plcols, plrows, 1)
+            ax = fig.add_subplot(plcols, plrows, 1)
         
+        print kwargs
+        m = Basemap(projection=projection, **kwargs)
         if (projection in ['ortho', 'robin', 'moll']):
-            m = Basemap(projection=projection, lat_0=lat0, lon_0=lon0, *kwargs)
             xoffset = (m.urcrnrx - m.llcrnrx) / 50.
-        elif projection in ['aea', 'cyl', 'eqdc', 'poly', 'omerc', 'vandg', 
-                            'nsper', 'lcc']:
-            m = Basemap(projection=projection, llcrnrlat=min(ylim),
-                        urcrnrlat=max(ylim), llcrnrlon=min(xlim),
-                        urcrnrlon=max(xlim), **kwargs)
-            xoffset = None
         else:
-            raise Warning, 'Projection \'%s\' not implemented.' % (projection)
+            xoffset = None
 
         x, y = m(*numpy.meshgrid(lon, lat))
         dat = z[n, :, :]
@@ -473,9 +506,13 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
 
         if type(z2).__name__ != 'NoneType':
             dat2 = z2[n, :, :]
-            im2 = m.contour(x, y, dat2, crange2, colors='k', hatch='x',
-                hold='on', linewidths=numpy.linspace(0.25, 2., len(crange2)),
-                alpha=0.6)
+            if numpy.iscomplex(dat2).any():
+                u, v, xx, yy = m.transform_vector(dat2.real, dat2.imag, lon, lat, 1, 1, returnxy=True, masked=True)
+                im2 = m.quiver(xx, yy, u, v)
+            else:
+                im2 = m.contour(x, y, dat2, crange2, colors='k', hatch='x',
+                    hold='on', linewidths=numpy.linspace(0.25, 2., 
+                    len(crange2)), alpha=0.6)
             #pylab.clabel(im2, fmt='%.1f')
 
         # Plot topography, if appropriate
@@ -498,15 +535,25 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
         m.drawmeridians(merid, linewidth=0.5, labels=mlabels)
         m.drawparallels(paral, linewidth=0.5, labels=plabels, xoffset=xoffset)
         
-        # Draws colorbar
-        if orientation == 'squared':
-            cx = pylab.axes([0.25, 0.07, 0.5, 0.03])
-        elif orientation  in ['landscape', 'worldmap']:
-            cx = pylab.axes([0.2, 0.05, 0.6, 0.03])
-        elif orientation == 'portrait':
-            cx = pylab.axes([0.25, 0.05, 0.5, 0.02])
-        pylab.colorbar(im, cax=cx, orientation='horizontal', ticks=cticks,
-                       extend=extend)
+        if legend == None:
+            # Draws colorbar
+            if orientation == 'squared':
+                cx = fig.add_axes([0.25, 0.07, 0.5, 0.03])
+            elif orientation  in ['landscape', 'worldmap']:
+                cx = pylab.axes([0.2, 0.05, 0.6, 0.03])
+            elif orientation == 'portrait':
+                cx = pylab.axes([0.25, 0.05, 0.5, 0.02])
+            pylab.colorbar(im, cax=cx, orientation='horizontal', ticks=cticks,
+                           extend=extend)
+        else:
+            # Draws legend
+            proxy = [pylab.Rectangle((0, 0), 1, 1, fc = pc.get_facecolor()[0]) 
+                for pc in im.collections]
+            fontP = FontProperties()
+            fontP.set_size('small')
+            pylab.legend(proxy, legend, loc='upper center', 
+                bbox_to_anchor=(0.5, -0.05), ncol=int(round(len(legend)/2)), 
+                prop=fontP)
 
         # Titles, units and other things
         ttl = None
@@ -548,7 +595,7 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
                     except:
                         ttl = ''
                         pass
-            ax.text(0.04, 0.83, lbl, ha='left', va='bottom', 
+            ax.text(0.02, 0.79, lbl, ha='left', va='baseline', 
                 transform=ax.transAxes, bbox=bbox)
 
         unt = None

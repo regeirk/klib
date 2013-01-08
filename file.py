@@ -100,7 +100,7 @@ def load_map(fullpath, ftype='xy', delimiter='\t', masked=False, topomask=None,
     # Pads edges with NaN's to avoid distortions when generating maps.
     if pad:
         dx, dy = x[1] - x[0], y[1] - y[0]
-        if (lon == None) and (ftype in ['xt', 'xt']):
+        if (lon == None) and (ftype in ['xt', 'xy']):
             lon = numpy.concatenate([[x[0] - dx], x, [x[-1] + dx]])
         if (lat == None) and (ftype in ['xy', 'ty']):
             lat = numpy.concatenate([[y[0] - dy], y, [y[-1] + dy]])
@@ -197,9 +197,10 @@ def load_map(fullpath, ftype='xy', delimiter='\t', masked=False, topomask=None,
             Z.mask = Z.mask | (ezi < 0)
 
     if masked:
-        Z.data[Z.mask] = 0
+        Z.data[Z.mask] = 0  # TODO: change to numpy.nan?
 
     return lon, lat, tm, Z
+
 
 def load_dataset(path, pattern='(.*)', ftype='xy', flist=None, delimiter='\t',
                  var_from_name=False, masked=False, xlim=None, ylim=None, 
@@ -310,7 +311,7 @@ def load_dataset(path, pattern='(.*)', ftype='xy', flist=None, delimiter='\t',
 
             x, y, t, z = load_map('%s/%s' % (path, fname), ftype=ftype,
                 delimiter=delimiter, lon=lon, lat=lat, tm=tm, masked=masked,
-                topomask=topomask)
+                topomask=None)
 
             if var_from_name:
                 if (ftype == 'xt') | (ftype == 'ty'):

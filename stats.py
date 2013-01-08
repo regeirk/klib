@@ -92,8 +92,7 @@ def basics(z, dt=None, oldschool=False):
 
     # Transforms input arrays numpy masked arrays.
     z = numpy.ma.asarray(z)
-    z.mask = numpy.isnan(z)
-    mask = z.mask.any(axis=0)
+    mask = (z.mask | numpy.isnan(z.data)).any(axis=0)
     if dt == None:
         dt = 1.
 
@@ -158,7 +157,7 @@ def basics(z, dt=None, oldschool=False):
                 ztrend[j, i] = p[0]
                 #
                 ac = acorr(z[:, j, i])
-                #zalpha[j, i] = (ac[c] + ac[c + 1] ** 0.5) / 2
+                zalpha[j, i] = (ac[c] + ac[c + 1] ** 0.5) / 2
 
         stdout.write(len(s) * '\b')
         s = ('Calculating trends and lag-1 autocorrelation... %s ' %
