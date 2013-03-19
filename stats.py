@@ -39,7 +39,7 @@ from mpl_toolkits.basemap import cm
 
 import common
 import wavelet
-import mapping
+import gis
 import graphics
 import file as fm
 
@@ -855,13 +855,13 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
                 sv = ''
             if mem_error:
                 # To include overlapping original signal, use zz=zero
-                mapping.hovmoller(lon, tm, avg_spectrum[1:, :, :],
+                gis.hovmoller(lon, tm, avg_spectrum[1:, :, :],
                     zo=avg_spectrum_signif[1:, j, :], title=title,
                     crange=crange, show=show, save=sv, labels=hlabels,
                     loc=hloc, cmap=cmap, bottom='avg', right='avg',
                     std=std_map[j, :])
             else:
-                mapping.hovmoller(lon, tm, avg_spectrum[1:, :, j, :],
+                gis.hovmoller(lon, tm, avg_spectrum[1:, :, j, :],
                     zo=avg_spectrum_signif[1:, j, :], title=title,
                     crange=crange, show=show, save=sv, labels=hlabels,
                     loc=hloc, cmap=cmap, bottom='avg', right='avg',

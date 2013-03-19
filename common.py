@@ -14,7 +14,9 @@ from numpy import (angle, array, asarray, concatenate, cos, diff, floor,
     cumsum)
 from pylab import find
 
-daysinyear = 365.2421896698
+omega = 7292115e-11 # Earth's rotation rate, according to Moritz (2000)
+daysinyear = 365.2421896698 # Wikipedia (?)
+hoursinday = 2 * pi / omega / 3600
 
 def num2latlon(x, y, mode='full', padding=True, hemispherefirst=False,
                x180=True, dtype='float'):

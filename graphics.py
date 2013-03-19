@@ -55,13 +55,13 @@ def figure(fp=dict(), ap=dict(left=0.15, bottom=0.12, right=0.95, top=0.95,
     
     if 'figsize' not in fp.keys():
         if orientation == 'landscape':
-            fp['figsize'] = (11, 8)
+            fp['figsize'] = [11, 8]
         elif orientation == 'portrait':
-            fp['figsize'] = (8, 11)
+            fp['figsize'] = [8, 11]
         elif orientation == 'squared':
-            fp['figsize'] = (8, 8)
+            fp['figsize'] = [8, 8]
         elif orientation == 'worldmap':
-            fp['figsize'] = (9, 5.0625) # Widescreen aspect ratio 16:9
+            fp['figsize'] = [9, 5.0625] # Widescreen aspect ratio 16:9
         else:
             raise Warning, 'Orientation \'%s\' not allowed.' % (orientation, )
     
@@ -120,7 +120,7 @@ def dropspines(ax, dist=7):
 
 
 def plot_ts(x, y, title='', xlabel='Time', xunits='', ylabel='', yunits='',
-    label='', format='-', color='k', linewidth=1.5, fig=None,
+    label='', format='-', color='k', linewidth=1.5, markersize=7, fig=None,
     subplot=(1, 1, 1), sharex=None, xlim=None, ylim=None, xscale='time',
     yscale='linear', nospines=True):
     """Plots time-series.
@@ -139,6 +139,7 @@ def plot_ts(x, y, title='', xlabel='Time', xunits='', ylabel='', yunits='',
         format = [format]
         color = [color]
         linewidth = [linewidth]
+        markersize = [markersize]
         n = 1
     else:
         n = len(y)
@@ -150,6 +151,8 @@ def plot_ts(x, y, title='', xlabel='Time', xunits='', ylabel='', yunits='',
             color = [color] * n
         if type(linewidth).__name__ in ['float', 'int']:
             linewidth = [linewidth] * n
+        if type(markersize).__name__ in ['float', 'int']:
+            markersize = [markersize] * n
 
     if len(subplot) == 3:
         ax = fig.add_subplot(subplot[0], subplot[1], subplot[2], sharex=sharex)
@@ -170,7 +173,14 @@ def plot_ts(x, y, title='', xlabel='Time', xunits='', ylabel='', yunits='',
             ys = numpy.log2(y[i])
         else:
             ys = y[i]
-        ax.plot(xs, ys, format[i], color=color[i], linewidth=linewidth[i])
+        
+        if numpy.iscomplex(ys).any():
+            q = ax.quiver(xs, xs * 0, ys.real, ys.imag)
+            qk = ax.quiverkey(q, 0.1, 0.1, 1., ur'%d %s' % (1, xunits), 
+                labelpos='E')
+        else:
+            ax.plot(xs, ys, format[i], color=color[i], linewidth=linewidth[i], 
+                markersize=markersize[i])
         xmin, xmax = min(xmin, xs.min()), max(xmax, xs.max())
 
     if xscale == 'log2':

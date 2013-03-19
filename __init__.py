@@ -31,36 +31,53 @@ __version__ = '$Revision: 1 $'
 from matplotlib import rcParams
 
 fontsize = 'medium'
-params = {'figure.figsize': [8, 11],
+params = {#'figure.figsize': [8, 11],
+          'figure.dpi': 90,
+          'font.cursive': 'cursive',
           'font.family': 'serif',
-          'font.sans-serif': ['Helvetica'],
+          'font.fantasy': ['fantasy'],
+          'font.monospace': ['monospace'],
+          'font.sans-serif': ['sans-serif'],
+          'font.serif': ['Times'],
           'font.size': 18,
           'font.stretch': 'ultra-condensed',
           'text.fontsize': fontsize,
           'xtick.labelsize': fontsize,
+          'xtick.major.size': 8,
+          'xtick.minor.size': 4,
+          #'xtick.direction': 'in',
           'ytick.labelsize': fontsize,
+          'ytick.major.size': 8,
+          'ytick.minor.size': 4,
+          #'ytick.direction': 'in',
           'axes.titlesize': fontsize,
           'text.usetex': True,
           'text.latex.unicode': True,
-          'timezone': 'UTC'
+          'text.latex.preamble': [r'\usepackage{times}'],
+          'timezone': 'UTC',
+          'axes.unicode_minus': True
          }
+
 rcParams.update(params)
 
 
 try:
     reload(cm)
-    reload(common)
+    reload(gis)
     reload(file)
     reload(stats)
-    reload(ocean)
+    reload(common)
+    reload(dynamics)
     reload(graphics)
     reload(interpolate)
 except:
     import cm
-    import common
+    import gis
+    import gis as mapping
     import file
     import file as filemngmnt # for backwards compatibility
     import stats
+    import common
     import dynamics
     import graphics
     import interpolate

@@ -1,5 +1,5 @@
 # -*- coding: iso-8859-1 -*-
-"""Mapping module.
+"""GIS module.
 
 This is part of the kLib Python library for scientific data analysis.
 The purpouse of this module is to assist in generating and manipulating
@@ -116,12 +116,57 @@ class Basemap(Basemap):
         return poly
 
 
+class grid():
+    """Common grid for geospatial maps.
+    
+    """
+    x, y, z = None, None, None
+    units = None
+    
+    
+    def __init__(self, x=None, y=None, z=None, units=None, missing_value=None):
+        self.set_grid(x, y, units)
+        if z != None:
+            self.set_z(z, units=units, missing_value=missing_value)
+        
+        return
+    
+    
+    def set_grid(self, x=None, y=None, units=None):
+        if x != None:
+            self.x = numpy.array(x)
+        
+        if y != None:
+            self.y = numpy.array(y)
+        
+        return
+    
+    
+    def set_z(self, z=None, units=None, missing_value=None):
+        if z != None:
+            self.z = numpy.ma.array(z)
+            # Checks whether masks values are greater or smaller then 
+            # 'missing_value'.
+            if missing_value > 0:
+                self.z.mask = self.z.mask | (self.z.data >= missing_value)
+            else:
+                self.z.mask = self.z.mask | (self.z.data <= missing_value)
+            self.z.mask = self.z.mask | numpy.isnan(self.z.data)
+        if units != None:
+            try:
+                self.units = units['z']
+            except:
+                self.units = units
+        
+        return
+
+
 def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
-        crange=None, crange2=None, extend=None, cmap=cm.GMT_no_green, 
-        show=False, shiftgrd=0., orientation='landscape', title='', label='', 
-        units='', subplot=None, adjustprops=None, loc=[], xlim=None, ylim=None,
-        lon0=None, xstep=None, ystep=None, etopo=False, profile=True, 
-        legend=None, hook=None, **kwargs):
+    crange=None, crange2=None, extend=None, cmap=cm.GMT_no_green, show=False, 
+    shiftgrd=None, orientation='landscape', title='', label='', units='', 
+    scale=1., scale_label='', da=[51, 51], subplot=None, adjustprops=None, 
+    loc=[], xlim=None, ylim=None, lon0=None, xstep=None, ystep=None, 
+    etopo=False, profile=True, legend=None, hook=None, **kwargs):
     """Generates maps.
 
     The maps can be either saved as image files or simply showed on
@@ -184,7 +229,7 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
             TODO: update functionality
         orientation (string, optional) :
             Sets the orientation of the figure. Allowed options are
-            'landscape' (default), 'portrait', 'squared'.
+            'landscape' (default), 'portrait', 'squared', 'worldmap'.
         title (string, array like, optional) :
             Sets the map title. If array like, each element of the
             array becomes the title for each map. If the title is set
@@ -195,6 +240,13 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
         units (string, array like, optional) :
             Determines the units for all the maps of for each map
             sepparetely if a text array is given.
+        scale (float, optional) :
+            Scaling factor for the variable to be plotted. Default is 1.
+        scale_label (string, optional) :
+            Scaling factor label.
+        da (list, optional) :
+            Pair of integers that the define density of arrows in 
+            latitude and longitude respectively, default is da = [51, 51].
         subplot (array like, optional) :
             Two item list containing the number of rows and columns for
             subplots.
@@ -236,7 +288,7 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
         tm = numpy.asarray(tm)
     if type(z).__name__ != 'MaskedArray':
         z = numpy.ma.asarray(z)
-        z.mask = numpy.isnan(z)
+        z.mask = (z.mask | numpy.isnan(z))
 
     # Determines the number of dimensions of the variable to be plotted and
     # the sizes of each dimension.
@@ -253,7 +305,7 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
 
     if type(z2).__name__ != 'NoneType':
         z2 = numpy.ma.asarray(z2)
-        z2.mask = numpy.isnan(z2)
+        z2.mask = (z2.mask | numpy.isnan(z2))
         z2 = z2.reshape(c, b, a)
     
     if lon.size != a:
@@ -282,28 +334,16 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
     if lon0 == None:
         lon0 = numpy.mean(xlim)
     lat0 = numpy.mean(ylim)
-    # TODO: Check shiftgrid and projections
-    if (shiftgrd != 0): # | (projection in ['ortho', 'robin', 'moll']):
-        dx, dy = lon[1] - lon[0], lat[1] - lat[0]
-        lon = lon180
-        shift = pylab.find(pylab.diff(lon) < 0)[0] + 1
-        try:
-          lon = numpy.roll(lon, -shift)
-          lon180 = numpy.roll(lon180, -shift)
-          z = numpy.roll(z, -shift)
-        except:
-          pass
-        #z, lon = shiftgrid(shiftgrd, z, lon)
         
-        # Pad borders with NaN's to avoid distorsions
-        #lon = numpy.concatenate([[lon[0] - dx], lon, [lon[-1] + dx]])
-        #lat = numpy.concatenate([[lat[0] - dy], lat, [lat[-1] + dy]])
-        #nan = numpy.ma.empty((c, 1, a)) * numpy.nan
-        #nan.mask = True
-        #z = numpy.ma.concatenate([nan, z, nan], axis=1)
-        #nan = numpy.ma.empty((c, b+2, 1)) * numpy.nan
-        #nan.mask = True
-        #z = numpy.ma.concatenate([nan, z, nan], axis=2)
+    # Pad borders with NaN's to avoid distorsions
+    #lon = numpy.concatenate([[lon[0] - dx], lon, [lon[-1] + dx]])
+    #lat = numpy.concatenate([[lat[0] - dy], lat, [lat[-1] + dy]])
+    #nan = numpy.ma.empty((c, 1, a)) * numpy.nan
+    #nan.mask = True
+    #z = numpy.ma.concatenate([nan, z, nan], axis=1)
+    #nan = numpy.ma.empty((c, b+2, 1)) * numpy.nan
+    #nan.mask = True
+    #z = numpy.ma.concatenate([nan, z, nan], axis=2)
     
     # Loads topographic data, if appropriate.
     if etopo:
@@ -323,7 +363,7 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
 
     # Setting the color ranges
     if crange == None:
-        cmajor, cminor, crange, cticks, extend = common.step(z,
+        cmajor, cminor, crange, cticks, extend = common.step(z/scale,
             returnrange=True)
     else:
         crange = numpy.asarray(crange)
@@ -468,15 +508,19 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
             fig.clear()
             ax = fig.add_subplot(plcols, plrows, 1)
         
-        print kwargs
         m = Basemap(projection=projection, **kwargs)
         if (projection in ['ortho', 'robin', 'moll']):
             xoffset = (m.urcrnrx - m.llcrnrx) / 50.
         else:
             xoffset = None
 
+        # TODO: Check shiftgrid and projections
+        dat = z[n, :, :] / scale
+        if (shiftgrd != None):
+            Lon = lon
+            dat, lon = shiftgrid(shiftgrd, dat, Lon, start=False)
+
         x, y = m(*numpy.meshgrid(lon, lat))
-        dat = z[n, :, :]
         
         # Set the merdians' and parallels' labels
         if plcols * plrows > 1:
@@ -506,11 +550,14 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
 
         if type(z2).__name__ != 'NoneType':
             dat2 = z2[n, :, :]
+            if shiftgrd != None:
+                dat2, lon = shiftgrid(shiftgrd, dat2, Lon, start=False)
             if numpy.iscomplex(dat2).any():
-                u, v, xx, yy = m.transform_vector(dat2.real, dat2.imag, lon, lat, 1, 1, returnxy=True, masked=True)
-                im2 = m.quiver(xx, yy, u, v)
+                u, v, xx, yy = m.transform_vector(dat2.real, dat2.imag, lon, 
+                    lat, da[1], da[0], returnxy=True, masked=True)
+                im2 = m.quiver(xx, yy, u, v, alpha=0.6)
             else:
-                im2 = m.contour(x, y, dat2, crange2, colors='k', hatch='x',
+                im2 = m.contour(x, y, dat2, crange2, colors='k', hatch='x', 
                     hold='on', linewidths=numpy.linspace(0.25, 2., 
                     len(crange2)), alpha=0.6)
             #pylab.clabel(im2, fmt='%.1f')
@@ -540,7 +587,7 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
             if orientation == 'squared':
                 cx = fig.add_axes([0.25, 0.07, 0.5, 0.03])
             elif orientation  in ['landscape', 'worldmap']:
-                cx = pylab.axes([0.2, 0.05, 0.6, 0.03])
+                cx = pylab.axes([0.25, 0.06, 0.5, 0.03])
             elif orientation == 'portrait':
                 cx = pylab.axes([0.25, 0.05, 0.5, 0.02])
             pylab.colorbar(im, cax=cx, orientation='horizontal', ticks=cticks,
@@ -601,14 +648,16 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
         unt = None
         if units.__class__ == str:
             unt = units
+            sc_lbl = scale_label
         else:
             try:
                 unt = units[n]
+                sc_lbl = scale_label[n]
             except:
                 pass
         if unt:
-            cx.text(1.05, 0.5, r'$\left[%s\right]$' % (unt), ha='left',
-                va='center', transform=cx.transAxes)
+            cx.text(1.05, 0.5, r'$\left[%s %s\right]$' % (sc_lbl, unt), 
+                ha='left', va='center', transform=cx.transAxes)
 
         # Drawing and saving the figure if appropriate.
         pylab.draw()
@@ -1069,3 +1118,33 @@ def hovmoller(lon, tm, z, zo=None, zz=None, title=None, label=None,
         pylab.savefig('%s.%s' % (save, ftype), dpi=150)
     if show == False:
         pylab.close(fig)
+
+
+def regrid(xi, yi, zi, xo, yo):
+    """Regrids data onto new datagrid.
+    
+    Note that the output arrays must be contained inside the input 
+    arrays. No interpolation is performed.
+    
+    PARAMETERS
+        xi, yi (array like) :
+            Longitude and latitude input array.
+        zi (array like) :
+            Variable input array, two-dimensional.
+        xo, yo (array like) :
+            Array to which data should be regrided.
+    
+    RETURNS
+        zo (array like) :
+            Regridded data array according to input coordinates.
+    
+    """
+    xi = common.lon180(xi)
+    xo = common.lon180(xo)
+    
+    idx = dict((k, i) for i, k in enumerate(xi))
+    selx = [idx[i] for i in xo]
+    idy = dict((k, i) for i, k in enumerate(yi))
+    sely = [idy[i] for i in yo]
+    selX, selY = numpy.meshgrid(selx, sely)
+    return zi[selY, selX]
