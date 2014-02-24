@@ -203,8 +203,8 @@ def load_map(fullpath, ftype='xy', delimiter='\t', masked=False, topomask=None,
 
 
 def load_dataset(path, pattern='(.*)', ftype='xy', flist=None, delimiter='\t',
-                 var_from_name=False, masked=False, xlim=None, ylim=None, 
-                 lon=None, lat=None, tm=None, topomask=None, verbose=False):
+        var_from_name=False, masked=False, xlim=None, ylim=None,  lon=None,
+        lat=None, tm=None, topomask=None, verbose=False, dummy=False):
     """Loads an entire dataset.
 
     It uses the numpy.loadtxt function and therefore accepts regular
@@ -259,8 +259,10 @@ def load_dataset(path, pattern='(.*)', ftype='xy', flist=None, delimiter='\t',
             Topography mask.
         verbose (boolean, optional) :
             If set to true, does not print anything on screen.
-            
-
+        dummy (boolean, optional) :
+            If set to true, does not load data and returns blank
+            data array for test purposes.
+    
     RETURNS
         lon (array like) :
             Longitude.
@@ -297,11 +299,16 @@ def load_dataset(path, pattern='(.*)', ftype='xy', flist=None, delimiter='\t',
     Lon = set()
     Lat = set()
     Tm = set()
+
     # Walks through the file loading process twice. At the first step loads
     # all the files to get all the geographical and temporal boundaries. At the
     # second step, reloads all files and fits them to the initialized data 
     # arrays
-    for step in range(2):
+    if dummy:
+        step_range = 1
+    else:
+        step_range = 2
+    for step in range(step_range):
         t1 = time()
         for n, fname in enumerate(flist):
             t2 = time()
@@ -351,6 +358,7 @@ def load_dataset(path, pattern='(.*)', ftype='xy', flist=None, delimiter='\t',
                 sely = [pylab.find(Lat == i)[0] for i in y]
                 selt = [pylab.find(Tm == i)[0] for i in t]
                 
+                #print len(selx), len(sely), len(selt)
                 i, j, k = common.meshgrid2(selx, sely, selt)
                 
                 if ftype == 'xt':
@@ -488,7 +496,8 @@ def save_map(lon, lat, z, fullpath, tm=None, fmt='%.3f', nonan=True,
             Format string for the values saved in the map. Default is a
             floating point number with three digits precision ('%.3f').
         nonan (boolean, optional) :
-            If true, slices unnecessary NaN's at the borders.
+            If true, slices unnecessary NaN's or masked values at the 
+            borders.
         lon180 (boolean, optional) :
             If true, saves longitude ranging from -180 to 180 degrees.
             Default value is false.
@@ -545,6 +554,7 @@ def save_map(lon, lat, z, fullpath, tm=None, fmt='%.3f', nonan=True,
     else:
         dat[1:, 1:] = z * nmask
     numpy.savetxt('%s' % (fullpath), dat, fmt=fmt, delimiter='\t')
+
 
 def save_dataset(lon, lat, tm, z, path, fname=None, prefix='', fmt='%.3f'):
     """Saves an entire dataset of maps to files.

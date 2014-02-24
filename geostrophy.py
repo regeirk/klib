@@ -4,7 +4,7 @@ oceans.
 
 DISCLAIMER
     Part of this module is based upon Matlab scripts provided by Robert
-    Scott available at (TODO: include URL).
+    Scott available at ftp://ftp.ig.utexas.edu/outgoing/rscott/MatLab/.
     
     This software may be used, copied, or redistributed as long as it
     is not sold and this copyright notice is reproduced on each copy
@@ -13,7 +13,7 @@ DISCLAIMER
 
 AUTHOR
     Sebastian Krieger
-w    email: sebastian.krieger@usp.br
+    email: sebastian.krieger@usp.br
 
 REVISION
     1 (2012-12-15 20:55 -0300 DST)
@@ -249,7 +249,6 @@ class grid:
             raise Warning, ('Longitude and latitude grid dimensions do not'
                 ' match.')
         b, a = lon.shape
-        x, y = lon * nan, lat * nan
         
         x = gsw.distance(lon, lat)
         x = concatenate([zeros((b, 1)), x.cumsum(axis=1)], axis=1)
@@ -520,6 +519,9 @@ def f(lat, lat0=None, returns='full'):
 def ssh2vel(psi, ys=2.2):
     """Calculates the geostrophic currents from sea surface height 
     maps.
+    
+    Assumes that in the equatorial region the meridional velocities are
+    zero (I. Pujol personnal communication).
     
     PARAMETERS
         psi (grid) :

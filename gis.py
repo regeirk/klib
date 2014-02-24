@@ -27,14 +27,14 @@ import pylab
 
 from time import time
 from sys import stdout
-from matplotlib import dates, rcParams
+from matplotlib import dates, rcParams, ticker
 from matplotlib.patches import Polygon
-from matplotlib.font_manager import FontProperties
 from scipy.stats import nanmean, nanstd
 from mpl_toolkits.basemap import Basemap, pyproj, cm, shiftgrid
 
 import common
 import graphics
+import cm as custom_cm
 
 
 def __init__(show=False):
@@ -163,10 +163,14 @@ class grid():
 
 def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
     crange=None, crange2=None, extend=None, cmap=cm.GMT_no_green, show=False, 
-    shiftgrd=None, orientation='landscape', title='', label='', units='', 
-    scale=1., scale_label='', da=[51, 51], subplot=None, adjustprops=None, 
-    loc=[], xlim=None, ylim=None, lon0=None, xstep=None, ystep=None, 
-    etopo=False, profile=True, legend=None, hook=None, **kwargs):
+    shiftgrd=None, orientation='landscape', title='', label='', label_xy=None,
+    units='', scale=1., scale_label='', zscale='linear', da=[51, 51], subplot=None, 
+    adjustprops=None, loc=[], xlim=None, ylim=None, lon0=None, xstep=None, 
+    ystep=None, etopo=False, profile=True, cbar=True, cbar_coords=None,
+    legend=None, colors=None, colors2='k', hatches=None, hook=None,
+    posterize=None, fig=None, ctype='contourf', cticks=None,
+    ctick_labels=None, fmt='%.1f', mask=None, drawcoastlines=True,
+    fillcontinents=True, drawcountries=True, **kwargs):
     """Generates maps.
 
     The maps can be either saved as image files or simply showed on
@@ -253,7 +257,8 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
         adjustprops (dict, optional) :
             Dictionary containing the subplot parameters.
         loc (list, optional) :
-            Lists the longitude of locations to be marked in map.
+            Lists of (lon, lat) coordinates of locations to be marked in
+            map.
         xlim, ylim (array like, optional) :
             List containing the upper and lower zonal and meridional
             limits, respectivelly.
@@ -266,9 +271,14 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
             ETA and other information on screen.
         legend (tuple, optional) :
             Sets the legend text for the map.
-        hook (function, optional) :
-            Executes a hook function after the plot. The map instance
-            is passed along as parameter.
+        hook, posterize (function, optional) :
+            Executes a hook function after the contour plot or a 
+            posterization function after all routines. Three arguments 
+            are passed to the hook function: map, axes and figure 
+            instances.
+        drawcoastlines, fillcontinents, drawcountries (boolean, optional) :
+            If set to true, draws coast lines, fills continents and draws
+            countries, respectively.
 
     OUTPUT
         Map plots either on screen and or on file according to the
@@ -284,11 +294,11 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
     # Transforms input arrays in numpy arrays and numpy masked arrays.
     lat = numpy.asarray(lat)
     lon = numpy.asarray(lon)
-    if type(tm).__name__ != 'NoneType':
+    if tm != None:
         tm = numpy.asarray(tm)
-    if type(z).__name__ != 'MaskedArray':
+    if type(z) != numpy.ma.MaskedArray:
         z = numpy.ma.asarray(z)
-        z.mask = (z.mask | numpy.isnan(z))
+        z.mask = (z.mask | numpy.isnan(z.data) | numpy.isinf(z.data))
 
     # Determines the number of dimensions of the variable to be plotted and
     # the sizes of each dimension.
@@ -302,6 +312,19 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
     else:
         raise Warning, ('Map plots require either bi-dimensional or tri-'
                         'dimensional data.')
+
+    # Remasks data according to input mask
+    if mask != None:
+        if mask.ndim == 2:
+            if (b, a) != mask.shape:
+                raise ValueError('Shape of mask array has different  shape as'
+                ' data array.')
+            z[None, :, :].repeat(c, axis=0)
+        elif mask.ndim == 3:
+            if (c, b, a) != mask.shape:
+                raise ValueError('Shape of mask array has different  shape as'
+                ' data array.')
+        z.mask = z.mask | mask
 
     if type(z2).__name__ != 'NoneType':
         z2 = numpy.ma.asarray(z2)
@@ -320,11 +343,11 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
     # latitude and longitude for the map.
     lon180 = common.lon180(lon)
     if xlim == None:
-        try:
-            mask = ~z.mask.all(axis=0).all(axis=0)
-            xlim = [lon180[mask].min(), lon180[mask].max()]
-        except:
-            xlim = [lon.min(), lon.max()]
+        #try:
+        #    mask = ~z.mask.all(axis=0).all(axis=0)
+        #    xlim = [lon180[mask].min(), lon180[mask].max()]
+        #except:
+        xlim = [lon.min(), lon.max()]
     if ylim == None:
         try:
             mask = ~z.mask.all(axis=0).all(axis=1)
@@ -363,17 +386,18 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
 
     # Setting the color ranges
     if crange == None:
-        cmajor, cminor, crange, cticks, extend = common.step(z/scale,
+        cmajor, cminor, crange, cticks, extend = common.step(z/scale, 
             returnrange=True)
     else:
         crange = numpy.asarray(crange)
         cminor = numpy.diff(crange).mean()
         if crange.size > 11:
             cmajor = 2 * cminor
-        if len(crange) < 15 :
-            cticks = crange[::2]
-        else:
-            cticks = crange[::5]
+        if cticks == None:
+            if len(crange) < 15 :
+                cticks = crange[::2]
+            else:
+                cticks = crange[::5]
 
         xmin, xmax = z.min(), z.max()
         rmin, rmax = crange.min(), crange.max()
@@ -390,8 +414,31 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
             else:
                 raise Warning, 'Unable to determine extend'
     if type(z2).__name__ != 'NoneType' and crange2 == None:
-        cmajor2, cminor2, crange2, cticks2, extend2 = common.step(z2,
-            returnrange=True)
+        try:
+            cmajor2, cminor2, crange2, cticks2, extend2 = common.step(z2,
+                returnrange=True)
+        except:
+            cmajor2, cminor2, crange2, cticks2, extend2 = (cmajor, cminor,
+                crange, cticks, extend)
+    
+    # The chlorophyll-a color scale as described at
+    # http://oceancolor.gsfc.nasa.gov/DOCS/standard_chlorophyll_colorscale.txt
+    # Chl-a concentration are converted from mg m-3 to a log like scale, i.e.
+    #   pix = (log10(chlor_a) + 2) / 0.015
+    #   chlor_a = 10 ** (0.015 * pix - 2)
+    if zscale == 'chla':
+        cmap = custom_cm.custom_chla
+        pix = lambda chlor_a: (numpy.log10(chlor_a) + 2) / 0.015
+        #chlor_a = lambda pix: 10 ** (0.015 * pix - 2)
+        z = pix(z)
+        zrange = numpy.array([0.01, 0.03, 0.1, 0.3, 1, 3, 10, 30])
+        zrange = zrange[zrange <= crange.max()]
+        #crange = numpy.arange(0, 256, 16)
+        crange = pix(zrange)
+        cticks = pix(zrange)
+        ctick_labels = zrange
+        extend = 'both'
+        ctype = 'pcolormesh'
 
     # Turning interactive mode on or off according to show parameter.
     if show == False:
@@ -460,11 +507,11 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
         kwargs['lat_0'] = (min(ylim) + max(ylim)) / 2.
         kwargs['lat_1'] = max(ylim) - (max(ylim) - min(ylim)) / 4.
         kwargs['lat_2'] = min(ylim) + (max(ylim) - min(ylim)) / 4.
-    elif projection in ['ortho', 'robin', 'moll']:
+    elif projection in ['ortho', 'robin', 'moll', 'laea']:
         kwargs['lat_0'] = lat0
         kwargs['lon_0'] = lon0
     if projection in ['aea', 'cyl', 'eqdc', 'poly', 'omerc', 'vandg',
-                      'nsper', 'lcc']:
+                      'nsper', 'lcc', 'laea']:
         kwargs['llcrnrlat'] = min(ylim)
         kwargs['urcrnrlat'] = max(ylim)
         kwargs['llcrnrlon'] = min(xlim)
@@ -473,7 +520,7 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
     
     # Setting the subplot parameters in case multiple maps per figure.
     try:
-        plrows, plcols = subplot
+        plrows, plcols = subplot[0:2]
     except:
         if type(tm).__name__ in ['NoneType', 'float']:
             if orientation in ['landscape', 'worldmap']:
@@ -499,11 +546,16 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
         stdout.write(s)
         stdout.flush()
 
-    fig = graphics.figure(fp=dict(), ap=adjustprops, orientation=orientation)
+    if fig == None:
+        fig = graphics.figure(fp=dict(), ap=adjustprops,
+            orientation=orientation)
     for n in range(c):
         t2 = time()
         if plcols * plrows > 1:
-            ax = fig.add_subplot(plrows, plcols, n + 1)
+            try:
+                ax = fig.add_subplot(plrows, plcols, subplot[2])
+            except:
+                ax = fig.add_subplot(plrows, plcols, n + 1)
         else:
             fig.clear()
             ax = fig.add_subplot(plcols, plrows, 1)
@@ -523,12 +575,16 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
         x, y = m(*numpy.meshgrid(lon, lat))
         
         # Set the merdians' and parallels' labels
+        try:
+            nn, cc = subplot[2]-1, subplot[0] * subplot[1]
+        except:
+            nn, cc = n, c
         if plcols * plrows > 1:
-            if (n % plcols) == 0:
+            if (nn % plcols) == 0:
                 plabels =  [1, 0, 0, 0]
             else:
                 plabels = [0, 0, 0, 0]
-            if (n >= c - plcols):
+            if (nn >= cc - plcols):
                 mlabels = [0, 0, 0, 1]
             else:
                 mlabels = [0, 0, 0, 0]
@@ -542,12 +598,27 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
 
         # Plots locations
         for item in loc:
-            m.scatter(item[0], item[1], s=24, c='w', marker='o', alpha=1, 
-                      zorder=99)
-
+            xx, yy = m(item[0], item[1])
+            m.scatter(xx, yy, s=25, c='w', marker='o', alpha=1, 
+                zorder=99)
+        
         # Plot contour
-        im = m.contourf(x, y, dat, crange, cmap=cmap, extend=extend, hold='on')
-
+        if hatches == None:
+            hatches = [None]
+        elif hatches != [None]:
+            m.contour(x, y, dat, len(crange), colors='k', linestyles='-')
+        if ctype == 'pcolormesh':
+            im = m.pcolormesh(x, y, dat, vmin=crange.min(), vmax=crange.max(), 
+                cmap=cmap, hold='on')
+        elif ctype == 'contourf':
+            im = m.contourf(x, y, dat, crange, cmap=cmap, extend=extend, 
+                hold='on', colors=colors, hatches=hatches)
+        elif ctype == 'contour':
+            im = m.contour(x, y, dat, crange, cmap=cmap, extend=extend,
+                hold='on', colors=colors, hatches=hatches)
+            if cmap == None:
+                pylab.clabel(im, fmt=fmt, inline=True, fontsize='normal')
+        
         if type(z2).__name__ != 'NoneType':
             dat2 = z2[n, :, :]
             if shiftgrd != None:
@@ -557,56 +628,71 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
                     lat, da[1], da[0], returnxy=True, masked=True)
                 im2 = m.quiver(xx, yy, u, v, alpha=0.6)
             else:
-                im2 = m.contour(x, y, dat2, crange2, colors='k', hatch='x', 
-                    hold='on', linewidths=numpy.linspace(0.25, 2., 
-                    len(crange2)), alpha=0.6)
+                im2 = m.contour(x, y, dat2, crange2, colors=colors2, hatch='x', 
+                    hold='on', alpha=0.6)
+                #linewidths=numpy.linspace(0.25, 2., len(crange2))
             #pylab.clabel(im2, fmt='%.1f')
 
         # Plot topography, if appropriate
         if etopo:
+            if cmap == cm.GMT_relief:
+                colors = 'w'
+            else:
+                colors = 'k'
             xe, ye = m(*numpy.meshgrid(ex, ey))
-            cs = m.contour(xe, ye, ez, er, colors='k', linestyles='-',
-                alpha=0.3, hold='on')
+            cs = m.contour(xe, ye, ez, er, colors=colors, linestyles='-',
+                alpha=0.5, hold='on')
 
         # Run hook function, if appropriate
         try:
-            hook(m)
+            hook(m, ax, fig)
         except:
             pass
-
-        m.drawcoastlines()
-        m.fillcontinents()
-        m.drawcountries()
+        
+        if drawcoastlines:
+            m.drawcoastlines()
+        if fillcontinents:
+            if cmap == None:
+                m.fillcontinents(color=(0.9, 0.9, 0.9))
+            else:
+                m.fillcontinents(color='white')
+        if drawcountries:
+            m.drawcountries()
         if projection != 'nsper':
             m.drawmapboundary(fill_color='white')
         m.drawmeridians(merid, linewidth=0.5, labels=mlabels)
         m.drawparallels(paral, linewidth=0.5, labels=plabels, xoffset=xoffset)
         
-        if legend == None:
+        if cbar == True:
             # Draws colorbar
-            if orientation == 'squared':
-                cx = fig.add_axes([0.25, 0.07, 0.5, 0.03])
-            elif orientation  in ['landscape', 'worldmap']:
-                cx = pylab.axes([0.25, 0.06, 0.5, 0.03])
-            elif orientation == 'portrait':
-                cx = pylab.axes([0.25, 0.05, 0.5, 0.02])
-            pylab.colorbar(im, cax=cx, orientation='horizontal', ticks=cticks,
-                           extend=extend)
-        else:
+            #corners = ax.get_position().corners()
+            #position = numpy.array([corners[0, 0], corners[0, 1],
+            #    corners[2, 0] - corners[0, 0], 0]) + numpy.array([0.15, -0.13,
+            #    -0.3, 0.03])
+            if cbar_coords == None:
+                if orientation == 'squared':
+                    cbar_coords = [0.25, 0.07, 0.5, 0.03]
+                elif orientation  in ['landscape', 'worldmap']:
+                    cbar_coords = [0.25, 0.08, 0.5, 0.03]
+                elif orientation == 'portrait':
+                    cbar_coords = [0.25, 0.05, 0.5, 0.015]
+            cax = pylab.axes(cbar_coords)
+            pylab.colorbar(im, cax=cax, orientation='horizontal', ticks=cticks,
+                extend=extend)
+            if ctick_labels != None:
+                cax.set_xticklabels(ctick_labels)
+        elif legend != None:
             # Draws legend
-            proxy = [pylab.Rectangle((0, 0), 1, 1, fc = pc.get_facecolor()[0]) 
-                for pc in im.collections]
-            fontP = FontProperties()
-            fontP.set_size('small')
-            pylab.legend(proxy, legend, loc='upper center', 
-                bbox_to_anchor=(0.5, -0.05), ncol=int(round(len(legend)/2)), 
-                prop=fontP)
+            graphics.legend(legend, im=im, bbox=(0.5, -0.05))
+            
 
         # Titles, units and other things
         ttl = None
-        if title.__class__ == str:
+        if type(title) == str:
             ttl = title
+            ttl_sup = True
         else:
+            ttl_sup = False
             try:
                 ttl = title[n]
             except:
@@ -621,8 +707,17 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
                     except:
                         ttl = ''
                         pass
-            ax.text(0.5, 1.05, ttl, ha='center', va='baseline',
-                transform=ax.transAxes)
+            # If only one title is a string, then assume it is a figure title,
+            # otherwise assume it is a subplot title.
+            if ttl_sup:
+                if n == 0:
+                    x = 0.5 * (adjustprops['left'] + adjustprops['right'])
+                    y = adjustprops['top'] + 0.02
+                    fig.suptitle(ttl, x=x, y=y, ha='center', va='baseline',
+                        fontsize='large')
+            else:
+                ax.text(0.5, 1.05, ttl, ha='center', va='baseline',
+                    transform=ax.transAxes)
         
         lbl = None
         if label.__class__ == str:
@@ -635,18 +730,21 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
         if lbl:
             if lbl == '%date%':
                 try: 
-                    ttl = dates.num2date(tm[n]).isoformat()[:10]
+                    lbl = dates.num2date(tm[n]).isoformat()[:10]
                 except:
                     try:
-                        ttl = dates.num2date(tm).isoformat()[:10]
+                        lbl = dates.num2date(tm).isoformat()[:10]
                     except:
-                        ttl = ''
+                        lbl = ''
                         pass
-            ax.text(0.02, 0.79, lbl, ha='left', va='baseline', 
+            if label_xy == None:
+                lbl_x, lbl_y = 0.02, 0.79
+            else:
+                lbl_x, lbl_y = label_xy
+            ax.text(lbl_x, lbl_y, lbl, ha='left', va='baseline', 
                 transform=ax.transAxes, bbox=bbox)
 
-        unt = None
-        if units.__class__ == str:
+        if type(units) in [str, unicode]:
             unt = units
             sc_lbl = scale_label
         else:
@@ -654,10 +752,13 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
                 unt = units[n]
                 sc_lbl = scale_label[n]
             except:
+                unt = None
                 pass
-        if unt:
-            cx.text(1.05, 0.5, r'$\left[%s %s\right]$' % (sc_lbl, unt), 
-                ha='left', va='center', transform=cx.transAxes)
+        if cbar & (unt not in [None, '']):
+            if sc_lbl not in [None, '']:
+                sc_lbl = '%s~' % (sc_lbl)
+            cax.text(1.05, 0.5, r'$\left[%s %s\right]$' % (sc_lbl, unt), 
+                ha='left', va='center', transform=cax.transAxes)
 
         # Drawing and saving the figure if appropriate.
         pylab.draw()
@@ -674,20 +775,27 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
             stdout.write(s)
             stdout.flush()
 
+    # Posterizes the figure
+    try:
+        posterize(m, ax, fig)
+        if save:
+            if (c == 1) | (plcols * plrows > 1):
+                pylab.savefig('%s.%s' % (save, ftype), dpi=150)
+            else:
+                pylab.savefig('%s%06d.%s' % (save, n+1, ftype), dpi=150)
+    except:
+        pass
     #
     if profile:
         stdout.write('\n')
-    if show == False:
-        pylab.close(fig)
-    else:
-        return fig
+    return fig
 
 
 def hovmoller(lon, tm, z, zo=None, zz=None, title=None, label=None,
-              labels=dict(), crange=None, cmap=cm.GMT_no_green,
-              orientation='landscape', show=False, save='', ftype='png',
-              adjustprops=None, bottom=None, right=None, loc=[], std=None,
-              xunits='deg', draft=False, hookx=None, hooky=None):
+    labels=dict(), crange=None, cmap=cm.GMT_no_green, orientation='landscape',
+    show=False, save='', ftype='png', adjustprops=None, bottom=None,
+    right=None, loc=[], std=None, xunits='deg', yunits='time',
+    ctype='contourf', draft=False, norm=None, hookx=None, hooky=None):
     """Hovmoller plots.
 
     PARAMETERS
@@ -701,7 +809,7 @@ def hovmoller(lon, tm, z, zo=None, zz=None, title=None, label=None,
             Overlapping contour variable (e.g. relative significance of
             wavelet analysis) to be ploted with a thick solid black line.
         zz (array like) :
-            Another overlapping contour variagle (e.g. original data) to be
+            Another overlapping contour variable (e.g. original data) to be
             ploted with a thin solid white line.
         title (string, array like, optional) :
             Sets the contour plot title. If array like, each element of
@@ -742,9 +850,14 @@ def hovmoller(lon, tm, z, zo=None, zz=None, title=None, label=None,
         xunit (string, optional) :
             Determines the x-axis unit. Valid options are either 'deg'
             for degrees (default) or 'km' for kilometers.
+        ctype (string, optional) :
+            Determines the type of contour, valid options are
+            'contourf' (default), 'contour' or 'pcolormesh'.
         draft (boolean, optional) :
             If set to true, then reduces the size of the colorbar to
             approximatelly two colors to save time. Default is false.
+        norm (matplotlib.colors.Normalize, optional)
+            Matplotlib instance for scaling data values to colors.
         hookx, hooky (function, optional) :
             Executes a hook function after the plot in the x and y
             axes, respectivelly.
@@ -791,6 +904,7 @@ def hovmoller(lon, tm, z, zo=None, zz=None, title=None, label=None,
     else:
         raise Warning, ('Hovmoller plots require either bi-dimensional or tri-'
                         'dimensional data.')
+    
     if lon.size != a:
         raise Warning, 'Longitude and data lengths do not match.'
     if tm.size != b:
@@ -858,28 +972,47 @@ def hovmoller(lon, tm, z, zo=None, zz=None, title=None, label=None,
     if crange == None:
         cmajor, cminor, crange, cticks, extend = common.step(z,
             returnrange=True)
+        cmajor, cminor = [cmajor], [cminor]
+        crange = [crange]
+        cticks = [cticks]
+        extend = [extend]
+        colorbars = False
     else:
-        crange = numpy.asarray(crange)
-        cminor = numpy.diff(crange).mean()
-        if crange.size > 11:
-            cmajor = 2 * cminor
-        if len(crange) < 15 :
-            cticks = crange[::2]
+        cminor, cmajor, cticks, extend = [], [], [], []
+        if type(crange) == list:
+            colorbars = True
         else:
-            cticks = crange[::5]
-
-        xmin, xmax = z.min(), z.max()
-        rmin, rmax = crange.min(), crange.max()
-        if (xmin < rmin) & (xmax > rmax):
-            extend = 'both'
-        elif (xmin < rmin) & (xmax <= rmax):
-            extend = 'min'
-        elif (xmin >= rmin) & (xmax > rmax):
-            extend = 'max'
-        elif (xmin >= rmin) & (xmax <= rmax):
-            extend = 'neither'
-        else:
-            raise Warning, 'Unable to determine extend'
+            colorbars = False
+            crange = [crange]
+        for ii, _crange in enumerate(crange):
+            _cminor = numpy.diff(_crange).mean()
+            if _crange.size > 11:
+                _cmajor = 2 * _cminor
+            else:
+                _cmajor = 5 * _cminor
+            if len(crange) <= 15 :
+                _cticks = _crange[::2]
+            else:
+                _cticks = _crange[::5]
+            #
+            xmin, xmax = z[ii, :, :].min(), z[ii, :, :].max()
+            rmin, rmax = _crange.min(), _crange.max()
+            if (xmin < rmin) & (xmax > rmax):
+                _extend = 'both'
+            elif (xmin < rmin) & (xmax <= rmax):
+                _extend = 'min'
+            elif (xmin >= rmin) & (xmax > rmax):
+                _extend = 'max'
+            elif (xmin >= rmin) & (xmax <= rmax):
+                _extend = 'neither'
+            else:
+                raise Warning, 'Unable to determine extend'
+            #
+            cminor.append(_cminor)
+            cmajor.append(_cmajor)
+            cticks.append(_cticks)
+            extend.append(_extend)
+    
     if draft:
         crange = [min(crange), crange[len(crange) / 2], max(crange)]
 
@@ -907,10 +1040,14 @@ def hovmoller(lon, tm, z, zo=None, zz=None, title=None, label=None,
     else:
         raise Warning, 'Orientation \'%s\' not allowed.' % (orientation, )
     if adjustprops == None:
-        adjustprops = dict(left=0.1, bottom=0.15, right=0.99, top=0.9,
-                           wspace=0.05, hspace=0.02)
+        if orientation == 'landscape':
+            adjustprops = dict(left=0.1, bottom=0.15, right=0.99, top=0.9,
+                wspace=0.05, hspace=0.02)
+        else:
+            adjustprops = dict(left=0.15, bottom=0.1, right=0.85, top=0.9,
+                wspace=0.05, hspace=0.02)
     
-    fig = graphics.figure(ap=adjustprops, orientation=orientation)
+    fig = graphics.figure(fp=dict(), ap=adjustprops, orientation=orientation)
 
     # Some figure parameters definitions and initializations
     if bottom:
@@ -971,9 +1108,25 @@ def hovmoller(lon, tm, z, zo=None, zz=None, title=None, label=None,
                 colors='k', linestyles='-', linewidths=1.)
 
         # Plots the contour. Uses assigned data for power hovmollers.
-        pylab.contourf(lon, tm, z[k, :, :].data, crange, cmap=cmap,
-            extend=extend)
-
+        if colorbars:
+            _crange = crange[k]
+            _extend = extend[k]
+        else:
+            _crange = crange[0]
+            _extend = extend[0]
+        if ctype == 'contourf':
+            cs = ax.contourf(lon, tm, z[k, :, :].data, _crange, cmap=cmap,
+                extend=_extend, norm=norm)
+        elif ctype == 'contour':
+            cs = ax.contour(lon, tm, z[k, :, :].data, _crange, cmap=cmap,
+                extend=_extend, norm=norm)
+        elif ctype == 'pcolormesh':
+            cs = ax.pcolormesh(lon, tm, z[k, :, :].data, vmin=_crange[0],
+                vmax=_crange[-1], cmap=cmap, norm=norm)
+            extend = 'neither'
+        else:
+            raise ValueError('Invalid contour type.')
+        
         # Running x and y hooks on current axis.
         try:
             hookx(bx)
@@ -983,7 +1136,7 @@ def hovmoller(lon, tm, z, zo=None, zz=None, title=None, label=None,
             hooky(bx)
         except:
             pass
-
+        
         if right:
             if right == 'std':
                 rz = nanstd(z[k, :, :].data, axis=1)
@@ -1031,23 +1184,35 @@ def hovmoller(lon, tm, z, zo=None, zz=None, title=None, label=None,
             if k > 0:
                 pylab.setp(dx.get_yticklabels(), visible=False)
 
-        if k == 0:
-            if orientation == 'landscape':
-                corientation = 'horizontal'
+        # Include the colorbar(s)
+        if orientation == 'landscape':
+            corientation = 'horizontal'
+            if (not colorbars) and (k == 0):
                 cax = pylab.axes([adjustprops['left'] + 0.15, 0.05,
-                    adjustprops['right'] - adjustprops['left'] - 0.3, 0.03])
-                ci, cj, ha, va = 1.05, 0.5, 'left', 'center'
-            elif orientation == 'portrait':
-                corientation = 'vertical'
+                    adjustprops['right'] - adjustprops['left'] - 0.3, 
+                    0.03])
+            elif colorbars:
+                cax = pylab.axes([x+0.1, 0.05, w-0.2, 0.03])
+            ci, cj, ha, va = 1.05, 0.5, 'left', 'center'
+        elif orientation == 'portrait':
+            corientation = 'vertical'
+            if (not colorbars) and (k == 0):
                 cax = pylab.axes([adjustprops['right'] + 0.02, y + 0.05, 
                     0.03, h - 0.1])
-                ci, cj, ha, va = 0.5, -0.05, 'center', 'baseline'
-            pylab.colorbar(cax=cax, ax=ax, orientation=corientation,
-                extend=extend, ticks=cticks)
+            else:
+                raise Warning, 'Not implemented yet!'
+                cax = pylab.axes([]) # TODO: make it happen
+            ci, cj, ha, va = 0.5, -0.05, 'center', 'baseline'
+        if colorbars or (k == 0):
+            if norm == None:
+                pylab.colorbar(cs, cax=cax, ax=ax, orientation=corientation,
+                    extend=extend, ticks=cticks[k])
+            else:
+                pylab.colorbar(cs, cax=cax, orientation=corientation)
             if labels['units']:
                 cax.text(ci, cj, r'$\left[%s\right]$' % (labels['units']),
-                         ha=ha, va=va, transform=cax.transAxes)
-        else:
+                     ha=ha, va=va, transform=cax.transAxes)
+        if k > 0:
             pylab.setp(bx.get_yticklabels(), visible=False)
 
         if title:
@@ -1073,14 +1238,19 @@ def hovmoller(lon, tm, z, zo=None, zz=None, title=None, label=None,
         cx.yaxis.set_minor_locator(yminor)
         if labels['units']:
             cx.set_ylabel(r'\textbf{%s} $\left[%s\right]$' % (labels[bottom],
-                labels['units']))
+                labels['units']), multialignment='center')
         else:
-            cx.set_ylabel(r'\textbf{%s}' % (labels[bottom]))
-        if xunits == 'km':
-            cx.set_xlabel(r'\textbf{%s}' % (xunits))
+            cx.set_ylabel(r'\textbf{%s}' % (labels[bottom]),
+                multialignment='center')
+        if 'xlabel' in labels.keys():
+            cx.set_xlabel(labels['xlabel'], multialignment='center')
+        elif xunits == 'km':
+            cx.set_xlabel(r'\textbf{%s}' % (xunits), multialignment='center')
     else:
-        if xunits == 'km':
-            ax.set_xlabel(r'\textbf{%s}' % (xunits))
+        if 'xlabel' in labels.keys():
+            ax.set_xlabel(labels['xlabel'], multialignment='center')
+        elif xunits == 'km':
+            ax.set_xlabel(r'\textbf{%s}' % (xunits), multialignment='center')
     if right:
         xstep, xstep1 = common.step([rightmin, rightmax], 1.5)
         rightmax = pylab.ceil(rightmax / xstep) * xstep
@@ -1095,22 +1265,51 @@ def hovmoller(lon, tm, z, zo=None, zz=None, title=None, label=None,
                 labels['units']))
         else:
             rx.set_title(r'%s' % (labels[right]))
+    else:
+        if 'ylabel' in labels.keys():
+            ax.set_ylabel(labels['ylabel'], multialignment='center')
+        elif yunits == 'km':
+            ax.set_ylabel(r'\textbf{%s}' % (yunits), multialignment='center')
 
     ax.set_xlim([lon.min(), lon.max()])
     ax.set_ylim([tm.min(),  tm.max()])
-    if xunits == 'deg':
-        xstep, xstep1 = common.step(lon, 2)
-    elif xunits == 'km':
-        xstep, xstep1 = common.step(lon, 5)
-    xmajor = pylab.matplotlib.ticker.MultipleLocator(xstep)
-    xminor = pylab.matplotlib.ticker.MultipleLocator(xstep1)
-    ax.xaxis.set_major_locator(xmajor)
-    ax.xaxis.set_minor_locator(xminor)
-    graphics.timeformat(ax, dt=tm[-1]-tm[0], axis='y')
-    if xunits == 'deg':
-        ax.set_xticklabels([common.num2latlon(i, 0, mode='each', x180=False,
-            dtype='label')[1] for i in ax.get_xticks()])
-    ax.set_ylabel(r'\textbf{%s}' % (labels['Year']))
+    if xunits in ['deg', 'deg**-1', 'km']:
+        if xunits in ['deg', 'deg**-1']:
+            xstep, xstep1 = common.step(lon, 2)
+        if xunits == 'km':
+            xstep, xstep1 = common.step(lon, 5)
+        xmajor = pylab.matplotlib.ticker.MultipleLocator(xstep)
+        xminor = pylab.matplotlib.ticker.MultipleLocator(xstep1)
+        ax.xaxis.set_major_locator(xmajor)
+        ax.xaxis.set_minor_locator(xminor)
+        if xunits == 'deg':
+            ax.set_xticklabels([common.num2latlon(i, 0, mode='each',
+                x180=False, dtype='label')[1] for i in ax.get_xticks()])
+    elif xunits == 'time':
+        graphics.timeformat(ax, dt=tm[-1]-tm[0], axis='x')
+        ax.set_xlabel(r'\textbf{%s}' % (labels['Year']),
+            multialignment='center')
+    else:
+        raise ValueError('Invalid x-axis units \'%s\'' % (xunits))
+
+    if yunits in ['deg', 'deg**-1', 'km']:
+        if yunits in ['deg', 'deg**-1']:
+            ystep, ystep1 = common.step(tm, 2)
+        if yunits == 'km':
+            ystep, ystep1 = common.step(tm, 5)
+        ymajor = pylab.matplotlib.ticker.MultipleLocator(ystep)
+        yminor = pylab.matplotlib.ticker.MultipleLocator(ystep1)
+        ax.yaxis.set_major_locator(ymajor)
+        ax.yaxis.set_minor_locator(yminor)
+    elif yunits == 'time':
+        graphics.timeformat(ax, dt=tm[-1]-tm[0], axis='y')
+        if 'ylabel' in labels.keys():
+            ax.set_ylabel(labels['ylabel'], multialignment='center')
+        else:
+            ax.set_ylabel(r'\textbf{%s}' % (labels['Year']),
+                multialignment='center')
+    else:
+        raise ValueError('Invalid y-axis units \'%s\'' % (yunits))
 
     # Drawing and saving the figure if appropriate.
     pylab.draw()
