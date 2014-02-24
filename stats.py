@@ -788,8 +788,8 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
                     incoi = numpy.arange(c)
                 polyw = numpy.polyfit(t[incoi], scale_avg[incoi].data, 1)
                 wavelet_trend[k, j, i] = polyw[0] * fstd2
-                fft_trend[k, j, i] = (fft_spectrum2[les, j, i] -
-                    fft_spectrum1[les, j, i]).mean() / fft_dt
+                fft_trend[k, j, i] = (fft_spectrum2[les[les<fft_N2], j, i] -
+                    fft_spectrum1[les[les<fft_N2], j, i]).mean() / fft_dt
                 if k == 0:
                     polyz = numpy.polyfit(t, fz * fstd, 1)
                     trend[j, i] = polyz[0]
@@ -881,6 +881,8 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
     if dim == 1:
         result['power_spectrum'] = power * fstd2
         result['power_significance'] = sig95
+        result['cwt'] = wave
+        result['fft'] = fft
     result['global_power'] = global_power
     result['scale_spectrum'] = avg_spectrum
     if fpath:
@@ -944,6 +946,7 @@ def polyval2d(x, y, m, debug=False):
             print 'z += %.2f * x**%d * y**%d' % (a, i, j)
     return z
 
+
 def detect_peaks(image, threshold=0.):
     """
     Takes an image and detect the peaks usingthe local maximum filter.
@@ -984,3 +987,62 @@ def detect_peaks(image, threshold=0.):
     detected_peaks = local_max + local_min - eroded_background
 
     return detected_peaks
+
+
+def climatology(t, z, w=None, result='year'):
+    """Returns monthly climatology of a time-series.
+    
+    PARAMETERS
+        t (array like) :
+            Time in matplotlib time format.
+        z (array like) :
+            The data to calculate climatology.
+        w (array like) :
+            Data weight, should have same dimensions as 'z'.
+        result (string) :
+            If set to 'year', returns only one year of data. If set to 
+            'full', returns the climatology for every time t.
+    
+    RETURN
+        z_clim (array like) :
+            Climatological averages.
+    
+    """
+    # Checks for proper dimensions
+    shape = z.shape
+    if len(shape) == 1:
+        z = z[:, None, None]
+    c, b, a = z.shape
+    
+    if w != None:
+        if w.shape != z.shape:
+            raise Warning, 'Data and weight arrays are not the same.'
+
+    # Starts converting time to datetime format. Determines the start and end 
+    # of the relevant dataset to ensure that only whole years are used. 
+    # Initializes climatology variable and calculates the averages.
+    Time = common.num2ymd
+    try:
+        start = pylab.find(Time[:, 1] == 1)[0]
+    except:
+        start = None
+    try:
+        end = pylab.find(Time[:, 1] == 12)[-1]
+    except:
+        end = None
+    time_clim = numpy.arange(12) + 1
+    z_clim = numpy.ma.zeros([12, b, a])
+    for i in range(12):
+        selt = pylab.find(Time[start:end+1, 1] == i + 1) + start
+        if w == None:
+            z_clim[i, :, :] = z[selt, :, :].mean(axis=0)
+        else:
+            z_clim[i, :, :] = ((z[selt, :, :] * w[selt, :, :]).sum(axis=0) / 
+                w[selt, :, :].sum(axis=0))
+    #
+    z_clim.mask = z_clim.mask | numpy.isnan(z_clim.data)
+    
+    if result == 'full':
+        z_clim = z_clim[Time[:, 1]-1]
+
+    return z_clim, Time

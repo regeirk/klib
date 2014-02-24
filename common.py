@@ -4,22 +4,74 @@
 __version__ = '$Revision: 2 $'
 # $Source$
 
-__all__ = ['num2latlon', 'lon180', 'lon360', 'profiler', 's2hms', 'distance',
-           'reglist', 'step', 'meshgrid2']
+__all__ = ['distance', 'intersect', 'lon180', 'lon360', 'lon_n', 'meshgrid2',
+    'num2latlon', 'num2ymd', 'profiler', 'reglist', 's2hms', 'simpson', 'step',
+    'omega', 'daysinyear', 'hoursinday', 'latex_scientific', 'natural_keys']
 
 import re
 from time import time
 from numpy import (angle, array, asarray, concatenate, cos, diff, floor, 
     iscomplex, log10, pi, sign, sqrt, ceil, floor, arange, loadtxt, zeros, 
-    cumsum)
+    cumsum, intersect1d, round)
 from pylab import find
+from matplotlib import dates
 
 omega = 7292115e-11 # Earth's rotation rate, according to Moritz (2000)
 daysinyear = 365.2421896698 # Wikipedia (?)
 hoursinday = 2 * pi / omega / 3600
 
+
+def _atoi(text):
+    return float(text) if text.isdigit() else text
+
+
+def natural_keys(text):
+    """Natural (or human) sorting of string list.
+
+    The solution is based on code provided by 'unutbu' available at
+    
+    http://stackoverflow.com/questions/5967500/
+        how-to-correctly-sort-a-string-with-a-number-inside
+
+    and
+
+    http://www.regular-expressions.info/floatingpoint.html
+    
+    EXAMPLE
+        >>> alist = ['rbio2.4', 'sym6', 'haar', 'bior3.1', 'sym3',
+            'rbio1.1', 'db2', 'rbio1.3', 'sym7', 'rbio1.5', 'sym5',
+            'sym4', 'sym9', 'sym8', 'rbio3.3', 'rbio3.1', 'rbio3.7',
+            'sym10', 'sym11']
+        >>> alist.sort(key=klib.common.natural_keys)
+
+    """
+    return [_atoi(c) for c in re.split('([-+]?[0-9]*\.?[0-9]+)', text)]
+
+
+def latex_scientific(f):
+    """Converts a floating point number to a LaTeX formatted string in
+    scientific notation.
+
+    """
+    a = log10(f)
+    if (a > 3) | (a <=-1):
+        a = round(a)
+        scale = 10 ** a
+        label = r'%.1f \times 10^{%d}' % (f / scale, a)
+    else:
+        label = '%.2f' % (f)
+    return label
+
+
+def num2ymd(t):
+    """Converting matplotlib time to a year-month-day array format."""
+    Time = asarray([[day.year, day.month, day.day, day.hour, day.minute, 
+        day.second] for day in dates.num2date(t)])
+    return Time
+
+
 def num2latlon(x, y, mode='full', padding=True, hemispherefirst=False,
-               x180=True, dtype='float'):
+               x180=True, separator='.', dtype='float'):
     """Converts numerical longitude and latitude to text.
 
     PARAMETERS
@@ -42,6 +94,8 @@ def num2latlon(x, y, mode='full', padding=True, hemispherefirst=False,
             If set to 'True', forces longitude to be between -180 and 
             +180 degrees. Otherwise, returns longitude ranging from 0
             to 360 degrees.
+        separator (string, optional) :
+            Decimal separator, '.' is the default value.
         dtype (string, optional) :
             Sets the output format of the string. Valid options are
             'float' for 3 decimal points precision, 'int' for integer
@@ -109,19 +163,42 @@ def num2latlon(x, y, mode='full', padding=True, hemispherefirst=False,
     elif dtype == 'label float':
         lon = '%.3f%s%s' % (abs(x), r'$^{\circ}$', EW)
         lat = '%.3f%s%s' % (abs(y), r'$^{\circ}$', NS)
+    elif dtype == 'label dms':
+        x, y = abs(x), abs(y)
+        minute = (x - int(x)) * 60
+        second = (minute - int(minute)) * 60
+        lon = '%d$^{\circ}$%d\'%.3f\"%s' % (int(x), int(minute), second, EW)
+        minute = (y - int(y)) * 60
+        second = (minute - int(minute)) * 60
+        lat = '%d$^{\circ}$%d\'%.3f\"%s' % (int(y), int(minute), second, NS)
+    elif dtype == 'label dm':
+        x, y = abs(x), abs(y)
+        minute = (x - int(x)) * 60
+        lon = '%d$^{\circ}$%.3f\'%s' % (int(x), minute, EW)
+        minute = (y - int(y)) * 60
+        lat = '%d$^{\circ}$%.3f\'%s' % (int(y), minute, NS)
     else:
         raise Warning, 'Type \'%s\' not supported.' % (dtype)
-
+    
+    if separator != '.':
+        lat = lat.replace('.', separator)
+        lon = lon.replace('.', separator)
+    
     if mode == 'full':
-        return lat + lon
+        if dtype in ['label dms', 'label dm']:
+            return '%s; %s' % (lat, lon)
+        else:
+            return lat + lon
     elif mode == 'each':
         return (lat, lon)
     else:
         raise Warning, 'Mode \'%s\' not supported.' % (mode)
 
 
-lon180 = lambda x: x + (x <= -180) * 360 - (x > 180) * 360
-lon360 = lambda x: x + (x <= 0) * 360 - (x >= 360) * 360
+lon_n = lambda x, n: x + (x <= (n-360)) * 360 - (x >= n) * 360
+lon180 = lambda x: lon_n(x, 180)
+lon360 = lambda x: lon_n(x, 360)
+
 
 
 def profiler(N, n, t0, t1, t2):
@@ -352,26 +429,25 @@ def step(x, n=None, kind='linear', s0=2., returnrange=False):
     else:
         raise Warning, 'Unknown kind \'%s\'' % (kind)
 
-    if type(x).__name__ in ['list']:
-        x = asarray(x)
+    #if type(x).__name__ in ['list']:
+    x = asarray(x).flatten()
     if iscomplex(x).any():
-        x = 0.5* (x.real + x.imag)
+        x = abs(x)
     xmin, xmax, xmean, xstd = x.min(), x.max(), x.mean(), x.std()
     if n:
-        xstep = (xmax - xmin) / n
+        xstep = min([(xmax - xmin), (4 * xstd)]) / n
     else:
-        xstep = xstd / 2
+        xstep = xstd
     base = floor(log10(xstep))
     order = 10 ** base
     i = abs(major - xstep / order)
     try:
         i = find(i == i.min())[0]
     except:
-        print x
         i = 0
     xmajor = major[i] * order
     xminor = minor[i] * order
-
+    
     if returnrange == False:
         return (xmajor, xminor)
     elif returnrange == True:
@@ -390,7 +466,7 @@ def step(x, n=None, kind='linear', s0=2., returnrange=False):
         rmax = ceil(rmax / xminor) * xminor
         xrange_ = arange(rmin, rmax + xminor, xminor)
         xticks = arange(rmin, rmax + xmajor, xmajor)
-
+        
         if (xmin < rmin) & (xmax > rmax):
             extend = 'both'
         elif (xmin < rmin) & (xmax <= rmax):
@@ -501,9 +577,45 @@ def simpson(y):
     return f
 
 
+def intersect(*args) :
+    """Intersects every two arrays and returns the intersected values 
+    and data indices.
+    
+    PARAMETERS
+        A, B, ... (array like) :
+            Sequence of arrays to be intersected. Note that A is 
+            intersected with B, C is intersected with D, etc.
+    
+    RETURNS
+        intersect, idx1, idx1 (array like) :
+            The intersection and the indices in each array.
+    
+    """
+    
+    n = len(args)
+    result = []
+
+    # Walks through every pair of input arrays.
+    for i in range(0, n, 2):
+        a = args[i]
+        b = args[i+1]
+        ab = intersect1d(a, b)
+        #
+        idx = dict((k, i) for i, k in enumerate(a))
+        sel1 = [idx[i] for i in ab]
+        idx = dict((k, i) for i, k in enumerate(b))
+        sel2 = [idx[i] for i in ab]
+        #
+        result.append(ab)
+        result.append(sel1)
+        result.append(sel2)
+    #
+    return result
+
+
 class etopo:
     p = __file__[:__file__.rfind('/')]
-    dat = loadtxt('%s/etopo20.xy.gz' % (p))
+    dat = loadtxt('%s/aux/etopo20.xy.gz' % (p))
     x = dat[0, 1:]
     y = dat[1:, 0]
     z = dat[1:, 1:]

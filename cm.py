@@ -4,6 +4,12 @@
 """
 
 from matplotlib import rcParams, colors
+from os.path import dirname
+from numpy import loadtxt
+
+###############################################################################
+# CONSTANTS AND PARAMETERS
+#
 
 # Color look up table (LUT) size
 _LUTSIZE = rcParams['image.lut']
@@ -35,7 +41,7 @@ _custom_jet_data = {
 }
 
 _custom_no_green_data = {
-    'red': [
+    'red': (
         (0, 1., 1.),
         (0.1, 1., 1.),
         (0.20000000298000001, 0.0, 0.0), 
@@ -51,8 +57,8 @@ _custom_no_green_data = {
         (0.86666667461400004, 1.0, 1.0),
         (0.93333333730699997, 1.0, 1.0), 
         (1.0, 0.5, 0.5)
-    ],
-    'green': [
+    ),
+    'green': (
         (0, 1., 1.),
         (0.1, 1., 1.),
         (0.3, 1.0, 1.0), 
@@ -67,8 +73,8 @@ _custom_no_green_data = {
         (0.86666667461400004, 0.43921568989799997, 0.43921568989799997),
         (0.93333333730699997, 0.30196079611799997, 0.30196079611799997),
         (1.0, 0.0, 0.0)
-    ],
-    'blue': [
+    ),
+    'blue': (
         (0, 1.0, 1.0), 
         (0.1, 1., 1.),
         (0.3, 1.0, 1.0), 
@@ -83,48 +89,53 @@ _custom_no_green_data = {
         (0.86666667461400004, 0.0, 0.0), 
         (0.93333333730699997, 0.0, 0.0), 
         (1.0, 0.0, 0.0)
-    ]
+    )
 }
 
 _custom_YlOrRd_data = {
-    'red': [
+    'red': (
         (0.0, 1.0, 1.0),
         (0.1, 1.0, 1.0),
         (0.25, 1.0, 1.0),
         (0.5, 1.0, 1.0), 
         (1.0, 0.8, 0.8)
-    ],
-    'green': [
+    ),
+    'green': (
         (0.0, 1.0, 1.0),
         (0.1, 1.0, 1.0),
         (0.25, 1.0, 1.0),
         (0.5, 0.62352941176470589, 0.62352941176470589), 
         (1.0, 0.0, 0.0)
-    ], 
-    'blue': [
+    ), 
+    'blue': (
         (0.0, 1.0, 1.0),
         (0.1, 1.0, 1.0),
         (0.25, 0.0, 0.0),
         (0.5, 0.0, 0.0),
         (1.0, 0.0, 0.0)
-    ]
+    )
 }
 
-# Generate the colormaps with color LUT size
+# Custom colormap for chlorophyll-a maps. The long data defitions are based on
+# http://oceancolor.gsfc.nasa.gov/DOCS/standard_chlorophyll_colorscale.txt
+_custom_chla_data = loadtxt('%s/aux/chla_cmap.dat' % 
+    (dirname(__file__)))[:, 2:] / 255.
+
+###############################################################################
+# GENERATES THE COLORMAPS AND REVERSE THEM TOO
+#
 custom_jet = colors.LinearSegmentedColormap('custom_jet', _custom_jet_data,
     _LUTSIZE)
 custom_no_green = colors.LinearSegmentedColormap('custom_no_green',
     _custom_no_green_data, _LUTSIZE)
 custom_YlOrRd = colors.LinearSegmentedColormap('custom_YlOrRd',
     _custom_YlOrRd_data, _LUTSIZE)
+custom_chla = colors.ListedColormap(_custom_chla_data, name='custom_chla')
 
-# Store colormap data to datad dictionary.
-datad = {}
-datad['custom_jet'] = _custom_jet_data
-
-# Reverse all the colormaps. Reversed colormaps have '_r' appended to their
-# name.
+# Reverse the colormaps in 'datad' list. Reversed colormaps have '_r' appended 
+# to their name.
 def _revcmap(data):
+    """Reverses the color map."""
     data_r = {}
     for key, val in data.iteritems():
         val = list(val)
@@ -135,6 +146,9 @@ def _revcmap(data):
         data_r[key] = valnew
     return data_r
 
+datad = dict(
+    custom_jet = _custom_jet_data
+)
 _cmapnames = datad.keys()
 for _cmapname in _cmapnames:
     _cmapname_r = '_cmaname' + '_r'
