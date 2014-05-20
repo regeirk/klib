@@ -38,7 +38,7 @@ from scipy import ndimage
 from mpl_toolkits.basemap import cm
 
 import common
-import wavelet
+import pycwt as wavelet
 import gis
 import graphics
 import file as fm
