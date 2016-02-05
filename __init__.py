@@ -23,6 +23,7 @@ __version__ = '$Revision: 1 $'
 # $Source$
 
 from os import environ
+from time import tzset
 
 try:
     display = environ['DISPLAY'][-2:]
@@ -36,6 +37,9 @@ if display != ':0':
     except:
         print 'Warning: could not use Agg backend.'
         pass
+
+environ['TZ'] = 'UTC'
+tzset()
 
 from matplotlib import rcParams
 
@@ -55,7 +59,14 @@ params = {
     'font.stretch': 'ultra-condensed',
     'text.usetex': True,
     'text.latex.unicode' : True,
-    'text.latex.preamble': [r'\usepackage{times}'],
+    'text.latex.preamble': [
+        r'\usepackage{times}',
+        r'\usepackage{siunitx}',
+        r'\sisetup{detect-family=true, per-mode=reciprocal}',
+        #r'\usepackage{sfmath}',
+        r'\usepackage{amsmath}',
+        r'\usepackage{nicefrac}',
+    ],
     'text.fontsize': fontsize,
     'text.color': '#555555',
     'axes.facecolor': '#EEEEEE', # axes background color
@@ -75,21 +86,21 @@ params = {
     'xtick.minor.pad': 6, # distance to the minor tick label in points
     'xtick.color': '#555555', # color of the tick labels
     'xtick.labelsize': fontsize,
-    'xtick.direction': 'out', # direction: in or out
+    'xtick.direction': 'in', # direction: in or out
     'ytick.major.size': 8, # major tick size in points
     'ytick.minor.size': 4, # minor tick size in points
     'ytick.major.pad': 6, # distance to major tick label in points
     'ytick.minor.pad': 6, # distance to the minor tick label in points
     'ytick.color': '#555555', # color of the tick labels
     'ytick.labelsize': fontsize,
-    'ytick.direction': 'out', # direction: in or out
+    'ytick.direction': 'in', # direction: in or out
     'grid.color': '#BCBCBC',
     'grid.linestyle': '-',
     'grid.linewidth': 0.5,
     'grid.alpha': 0.5,
     'legend.fancybox': True,
     'figure.figsize': [11, 8], # figure size in inches
-    'figure.dpi': 90, # figure dots per inch
+    'figure.dpi': 96, # figure dots per inch
     'figure.facecolor' : '0.85', # figure facecolor; 0.75 is scalar gray
     'figure.edgecolor' : '0.50', # figure edgecolor
     'keymap.fullscreen': 'f', # toggling

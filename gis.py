@@ -164,13 +164,14 @@ class grid():
 def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
     crange=None, crange2=None, extend=None, cmap=cm.GMT_no_green, show=False, 
     shiftgrd=None, orientation='landscape', title='', label='', label_xy=None,
-    units='', scale=1., scale_label='', zscale='linear', da=[51, 51], subplot=None, 
-    adjustprops=None, loc=[], xlim=None, ylim=None, lon0=None, xstep=None, 
-    ystep=None, etopo=False, profile=True, cbar=True, cbar_coords=None,
-    legend=None, colors=None, colors2='k', hatches=None, hook=None,
-    posterize=None, fig=None, ctype='contourf', cticks=None,
-    ctick_labels=None, fmt='%.1f', mask=None, drawcoastlines=True,
-    fillcontinents=True, drawcountries=True, **kwargs):
+    units='', scale=1., scale_label='', zscale='linear', da=[51, 51], 
+    subplot=None, adjustprops=None, loc=[], loc_args=dict(), xlim=None, 
+    ylim=None, lon0=None, xstep=None, ystep=None, etopo=False, profile=True, 
+    cbar=True, cbar_coords=None, legend=None, colors=None, colors2='k', 
+    linestyles='-', linewidths=1, hatches=None, hook=None, posterize=None,
+    fig=None, ax=None, ctype='contourf', cticks=None, ctick_labels=None,
+    fmt='%.1f', mask=None, drawcoastlines=True, fillcontinents=True,
+    drawcountries=True, drawstates=False, **kwargs):
     """Generates maps.
 
     The maps can be either saved as image files or simply showed on
@@ -259,6 +260,9 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
         loc (list, optional) :
             Lists of (lon, lat) coordinates of locations to be marked in
             map.
+        loc_args (dictionary, optional) :
+            Location arguments. Useful for customization, default is a 
+            white point.
         xlim, ylim (array like, optional) :
             List containing the upper and lower zonal and meridional
             limits, respectivelly.
@@ -276,16 +280,18 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
             posterization function after all routines. Three arguments 
             are passed to the hook function: map, axes and figure 
             instances.
-        drawcoastlines, fillcontinents, drawcountries (boolean, optional) :
-            If set to true, draws coast lines, fills continents and draws
-            countries, respectively.
+        drawcoastlines, fillcontinents, drawcountries, drawstates
+        (boolean, optional) :
+            If set to true, draws coast lines, fills continents draws
+            countries and states, respectively.
 
     OUTPUT
         Map plots either on screen and or on file according to the
         specified parameters.
 
     RETURNS
-        Nothing.
+        fig, m :
+            The figure and map objects.
 
     """
     t1 = time()
@@ -369,11 +375,17 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
     #z = numpy.ma.concatenate([nan, z, nan], axis=2)
     
     # Loads topographic data, if appropriate.
-    if etopo:
+    if etopo != False:
         ez = common.etopo.z
         ex = common.etopo.x
         ey = common.etopo.y
-        er = -numpy.arange(1000, 12000, 1000)
+        if etopo == True:
+            er = -numpy.array([100, 250, 500, 1000, 2000, 3000, 4000, 5000,
+                6000, 7000, 8000, 9000, 10000, 11000, 12000])
+            #er = -numpy.arange(1000, 12000, 1000)
+        else:
+            er = numpy.asarray(etopo)
+        etopo = True
         #
         if (shiftgrd != 0): #| (projection in ['ortho', 'robin', 'moll']):
             ex = common.lon180(ex)
@@ -394,11 +406,17 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
         if crange.size > 11:
             cmajor = 2 * cminor
         if cticks == None:
-            if len(crange) < 15 :
+            crange_len = len(crange)
+            #cticks_step = 2 * int(crange_len / 10.) + 1
+            #cticks = crange[::cticks_step]
+            if crange_len < 15 :
                 cticks = crange[::2]
-            else:
+            elif crange_len < 30:
                 cticks = crange[::5]
-
+            elif crange_len < 60:
+                cticks = crange[::10]
+            else:
+                cticks = crange[::20]
         xmin, xmax = z.min(), z.max()
         rmin, rmax = crange.min(), crange.max()
         
@@ -421,6 +439,10 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
             cmajor2, cminor2, crange2, cticks2, extend2 = (cmajor, cminor,
                 crange, cticks, extend)
     
+    if cmap == None:
+        ctype = 'contour'
+        cbar = False
+    
     # The chlorophyll-a color scale as described at
     # http://oceancolor.gsfc.nasa.gov/DOCS/standard_chlorophyll_colorscale.txt
     # Chl-a concentration are converted from mg m-3 to a log like scale, i.e.
@@ -439,6 +461,13 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
         ctick_labels = zrange
         extend = 'both'
         ctype = 'pcolormesh'
+    
+    # Sets default location arguments
+    default_args = dict(s=25, c='w', marker='o', alpha=1, zorder=99)
+    for key in default_args.keys():
+        if key not in loc_args.keys():
+            loc_args[key] = default_args[key]
+    
 
     # Turning interactive mode on or off according to show parameter.
     if show == False:
@@ -502,7 +531,7 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
     elif projection == 'nsper':
         kwargs['lon_0'] = lon0
         kwargs['lat_0'] = lat0
-    elif projection in ['aea', 'lcc']:
+    elif projection in ['aea', 'lcc', 'cass']:
         kwargs['lon_0'] = lon0
         kwargs['lat_0'] = (min(ylim) + max(ylim)) / 2.
         kwargs['lat_1'] = max(ylim) - (max(ylim) - min(ylim)) / 4.
@@ -511,7 +540,7 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
         kwargs['lat_0'] = lat0
         kwargs['lon_0'] = lon0
     if projection in ['aea', 'cyl', 'eqdc', 'poly', 'omerc', 'vandg',
-                      'nsper', 'lcc', 'laea']:
+                      'nsper', 'lcc', 'laea', 'cass']:
         kwargs['llcrnrlat'] = min(ylim)
         kwargs['urcrnrlat'] = max(ylim)
         kwargs['llcrnrlon'] = min(xlim)
@@ -556,11 +585,11 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
                 ax = fig.add_subplot(plrows, plcols, subplot[2])
             except:
                 ax = fig.add_subplot(plrows, plcols, n + 1)
-        else:
+        elif ax == None:
             fig.clear()
             ax = fig.add_subplot(plcols, plrows, 1)
         
-        m = Basemap(projection=projection, **kwargs)
+        m = Basemap(projection=projection, ax=ax, **kwargs)
         if (projection in ['ortho', 'robin', 'moll']):
             xoffset = (m.urcrnrx - m.llcrnrx) / 50.
         else:
@@ -599,14 +628,14 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
         # Plots locations
         for item in loc:
             xx, yy = m(item[0], item[1])
-            m.scatter(xx, yy, s=25, c='w', marker='o', alpha=1, 
-                zorder=99)
+            m.scatter(xx, yy, **loc_args)
         
         # Plot contour
         if hatches == None:
             hatches = [None]
         elif hatches != [None]:
-            m.contour(x, y, dat, len(crange), colors='k', linestyles='-')
+            m.contour(x, y, dat, len(crange), colors=colors,
+                linestyles=linestyles, linewidths=linewidths)
         if ctype == 'pcolormesh':
             im = m.pcolormesh(x, y, dat, vmin=crange.min(), vmax=crange.max(), 
                 cmap=cmap, hold='on')
@@ -615,7 +644,8 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
                 hold='on', colors=colors, hatches=hatches)
         elif ctype == 'contour':
             im = m.contour(x, y, dat, crange, cmap=cmap, extend=extend,
-                hold='on', colors=colors, hatches=hatches)
+                hold='on', colors=colors, linestyles=linestyles,
+                linewidths=linewidths, hatches=hatches)
             if cmap == None:
                 pylab.clabel(im, fmt=fmt, inline=True, fontsize='normal')
         
@@ -624,9 +654,13 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
             if shiftgrd != None:
                 dat2, lon = shiftgrid(shiftgrd, dat2, Lon, start=False)
             if numpy.iscomplex(dat2).any():
-                u, v, xx, yy = m.transform_vector(dat2.real, dat2.imag, lon, 
-                    lat, da[1], da[0], returnxy=True, masked=True)
-                im2 = m.quiver(xx, yy, u, v, alpha=0.6)
+                if da == None:
+                    im2 = m.quiver(lon, lat, dat2.real, dat2.imag, latlon=True,
+                        alpha=0.6)
+                else:
+                    u, v, xx, yy = m.transform_vector(dat2.real, dat2.imag, 
+                        lon, lat, da[1], da[0], returnxy=True, masked=True)
+                    im2 = m.quiver(xx, yy, u, v, alpha=0.6)
             else:
                 im2 = m.contour(x, y, dat2, crange2, colors=colors2, hatch='x', 
                     hold='on', alpha=0.6)
@@ -642,7 +676,10 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
             xe, ye = m(*numpy.meshgrid(ex, ey))
             cs = m.contour(xe, ye, ez, er, colors=colors, linestyles='-',
                 alpha=0.5, hold='on')
-
+            if ((xlim[1] - xlim[0]) <= 5 | (ylim[1] - ylim[0] <= 5)):
+                pylab.clabel(cs, fontsize='x-small', fmt='%d', 
+                    rightside_up=False, use_clabeltext=True)
+        
         # Run hook function, if appropriate
         try:
             hook(m, ax, fig)
@@ -658,6 +695,8 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
                 m.fillcontinents(color='white')
         if drawcountries:
             m.drawcountries()
+        if drawstates:
+            m.drawstates()
         if projection != 'nsper':
             m.drawmapboundary(fill_color='white')
         m.drawmeridians(merid, linewidth=0.5, labels=mlabels)
@@ -788,7 +827,7 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
     #
     if profile:
         stdout.write('\n')
-    return fig
+    return fig, m
 
 
 def hovmoller(lon, tm, z, zo=None, zz=None, title=None, label=None,

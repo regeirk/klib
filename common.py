@@ -9,16 +9,103 @@ __all__ = ['distance', 'intersect', 'lon180', 'lon360', 'lon_n', 'meshgrid2',
     'omega', 'daysinyear', 'hoursinday', 'latex_scientific', 'natural_keys']
 
 import re
-from time import time
-from numpy import (angle, array, asarray, concatenate, cos, diff, floor, 
-    iscomplex, log10, pi, sign, sqrt, ceil, floor, arange, loadtxt, zeros, 
-    cumsum, intersect1d, round)
-from pylab import find
+from dateutil.parser import parse
 from matplotlib import dates
+from numpy import (angle, arange, array, asarray, ceil, concatenate, cos, 
+    cumsum, diff, empty, flatnonzero, floor, intersect1d, iscomplex, loadtxt,
+    log10, pi, round, sign, sqrt, zeros, ma, int_)
+from pylab import find
+from time import time
+
 
 omega = 7292115e-11 # Earth's rotation rate, according to Moritz (2000)
 daysinyear = 365.2421896698 # Wikipedia (?)
 hoursinday = 2 * pi / omega / 3600
+secondsinday = 86400.
+
+daysinyear_ = lambda y : 365 + int_(((y % 4) == 0) & 
+    (((y % 100) != 0) | ((y % 400) == 0)))
+
+
+def period2dhms(T, result='string'):
+    """Converts periods in days to day, hour, minute, second."""
+    if type(T) in [float, int]:
+        T = [T]
+    
+    dhms = []
+    for t in T:
+        days = int(t)
+        hours = (t - days) * 24
+        minutes = (hours - int(hours)) * 60
+        seconds = (minutes - int(minutes)) * 60
+        #
+        a = array([days, int(hours), int(minutes), seconds])
+        #
+        if result == 'string':
+            # Finds first and last nonzero values:
+            sel = flatnonzero(a)
+            s = ''
+            for i in range(sel[0], sel[-1]+1):
+                if i == 0:
+                    s += '{:.0f}d'
+                elif i == 1:
+                    s += '{:.0f}h'
+                elif i == 2:
+                    s += '{:.0f}m'
+                elif i == 3:
+                    s += '{:.0f}s'
+            s = s.format(*list(a[sel[0]:sel[-1]+1]))
+            dhms.append(s)
+        else:
+            dhms.append(a)
+        #
+            
+    if result == 'string':
+        return dhms
+    else:
+        return asarray(dhms)
+
+
+def year2num(y):
+    """
+    Converts decimal year representation of date/time to a floating point
+    value representing the number of days since 0001-01-01 00:00:00 UTC.
+    Fraction part represents hours, minutes and seconds. For details, 
+    please refer to matplotlib.dates module documentation.
+    
+    """
+    if isinstance(y, int) | isinstance(y, float):
+        y = asarray([y])
+        return_array = False
+    else:
+        return_array = True
+    #
+    year = int_(y)
+    residual = y - year
+    julian_day = residual * daysinyear_(year)
+    #
+    num = [dates.date2num(dates.datetime.date(year=_y, month=1, day=1)) + _d 
+        for _y, _d in zip(year, julian_day)]
+    #
+    if return_array:
+        return num
+    else:
+        return num[0]
+
+
+def datestr2num(s):
+    """
+    Converts a string representation of date/time to a floating point
+    value representing the number of days since 0001-01-01 00:00:00 UTC.
+    Fraction part represents hours, minutes and seconds. For details,
+    please refer to matplotlib.dates module documentation.
+
+    """
+    # Parse from string to date/time object
+    datetime = parse(s)
+    # Convert date/time object to matplotlib date/time number
+    num = dates.date2num(datetime)
+    return num
 
 
 def _atoi(text):
@@ -63,15 +150,129 @@ def latex_scientific(f):
     return label
 
 
-def num2ymd(t):
-    """Converting matplotlib time to a year-month-day array format."""
-    Time = asarray([[day.year, day.month, day.day, day.hour, day.minute, 
-        day.second] for day in dates.num2date(t)])
-    return Time
+def season(t, hemisphere='S', result='number'):
+    """Determines meteorological season for matplotlib time.
+
+    Parameters
+    ----------
+    t : array like, float, int
+        Time array or number in matplotlib format.
+    hemisphere : string, optional
+        Indicates whether the northern or southern hemisphere is
+        considered. Valid values are `N` or `S`.
+    return : string, optional
+        If set to `number` (default) returns either 1, 2, 3 or 4 for
+        winter, spring, summer, fall, respectively. If set to `string`
+        returns season string.
+
+    Returns
+    -------
+    s : array like, string, int
+        Meteorological season.
+
+    """
+    if isinstance(t, float) | isinstance(t, int):
+        t = [t]
+    # Converts time to year-month-day format.
+    months = asarray([dates.num2date(_t).month for _t in t])
+    s = empty(months.shape[0], dtype=int)
+    #
+    if hemisphere == 'N':
+        # Winter: December, January, February
+        s[(months==12) | (months==01) | (months==02)] = 1
+        # Spring: March, April, May
+        s[(months==3) | (months==4) | (months==5)] = 2
+        # Summer: June, July, August
+        s[(months==6) | (months==7) | (months==8)] = 3
+        # Fall: September, October, November
+        s[(months==9) | (months==10) | (months==11)] = 4
+    elif hemisphere == 'S':
+        # Winter: June, July, August
+        s[(months==6) | (months==7) | (months==8)] = 1
+        # Spring: September, October, November
+        s[(months==9) | (months==10) | (months==11)] = 2
+        # Summer: December, January, February
+        s[(months==12) | (months==01) | (months==02)] = 3
+        # Fall: March, April, May
+        s[(months==3) | (months==4) | (months==5)] = 4
+
+    if result == 'string':
+        'winter', 'spring', 'summer', 'fall'
+        S = empty(s.shape, dtype='S6')
+        S[s==1] = 'winter'
+        S[s==2] = 'spring'
+        S[s==3] = 'summer'
+        S[s==4] = 'fall'
+        if len(s) == 1:
+            return S[0]
+        else:
+            return S
+    else:
+        if len(s) == 1:
+            return s[0]
+        else:
+            return s
+
+
+def num2ymd(T, t0=None, **kwargs):
+    """
+    Converts matplotlib time to a year-month-day array format.
+
+    Parameters
+    ----------
+    T : array_like
+        Array of matplotlib time.
+    t0 : float, datetime.date, datetime.datetime, optional
+        Reference date to calculate Julian day. If not set, calculates
+        Julian day using the first of January for each year.
+
+    Returns
+    -------
+    YMD : array
+        Two-dimensional array with columns indicating respectively
+        0--year, 1--month, 2--day, 3--hour, 4--minute, 5--second,
+        6--Julian day, 7--ISO week number, and 8--season. Season is
+        given as a number from 1 to 4 indicating respectively winter,
+        spring, summer and fall.
+    
+    See also
+    --------
+        season
+    """
+    #
+    if t0 == None:
+        _T0 = dates.datetime.date(year=1, month=1, day=1)
+    elif isinstance(t0, float) | isinstance(t0, int):
+        _T0 = dates.num2date(t0)
+        _t0 = t0 - 1 # Makes sure Julian day starts at 1.
+    elif (isinstance(t0, dates.datetime.date) |
+         isinstance(t0, dates.datetime.datetime)):
+        _T0 = t0
+        _t0 = dates.date2num(_T0) - 1 # Makes sure Julian day starts at 1.
+    # If checks whether `t0` is an integer. This will be used later to decide 
+    # if Julian day will be returned as an integer.
+    is_int = isinstance(t0, int)
+    #
+    Time = []
+    for t in T:
+        # Converts matplotlib number to datetime object.
+        day = dates.num2date(t)
+        if is_int:
+            t = int(t)
+        # Checks if _T0.year is the same as current year for Julian day
+        # calculation.
+        if (t0 == None) & (_T0.year != day.year):
+            _T0 = dates.datetime.date(year=day.year, month=1, day=1)
+            _t0 = dates.date2num(_T0) - 1 # Makes sure Julian day starts at 1.
+        # Appends current date and time values to output array.
+        Time.append([day.year, day.month, day.day, day.hour, day.minute,
+            day.second, t-_t0, day.isocalendar()[1], season(t, **kwargs)])
+    #
+    return asarray(Time)
 
 
 def num2latlon(x, y, mode='full', padding=True, hemispherefirst=False,
-               x180=True, separator='.', dtype='float'):
+               x180=True, separator='.', precision=.2, dtype='float'):
     """Converts numerical longitude and latitude to text.
 
     PARAMETERS
@@ -174,9 +375,11 @@ def num2latlon(x, y, mode='full', padding=True, hemispherefirst=False,
     elif dtype == 'label dm':
         x, y = abs(x), abs(y)
         minute = (x - int(x)) * 60
-        lon = '%d$^{\circ}$%.3f\'%s' % (int(x), minute, EW)
+        lon = '{deg:d}$^{{\circ}}${min:{precision}f}\'{hemis}'.format(
+            deg=int(x), min=minute, hemis=EW, precision=precision)
         minute = (y - int(y)) * 60
-        lat = '%d$^{\circ}$%.3f\'%s' % (int(y), minute, NS)
+        lat = '{deg:d}$^{{\circ}}${min:{precision}f}\'{hemis}'.format(
+            deg=int(y), min=minute, hemis=NS, precision=precision)
     else:
         raise Warning, 'Type \'%s\' not supported.' % (dtype)
     
@@ -430,7 +633,7 @@ def step(x, n=None, kind='linear', s0=2., returnrange=False):
         raise Warning, 'Unknown kind \'%s\'' % (kind)
 
     #if type(x).__name__ in ['list']:
-    x = asarray(x).flatten()
+    x = ma.masked_invalid(x).flatten()
     if iscomplex(x).any():
         x = abs(x)
     xmin, xmax, xmean, xstd = x.min(), x.max(), x.mean(), x.std()
