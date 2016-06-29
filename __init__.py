@@ -67,7 +67,6 @@ params = {
         r'\usepackage{amsmath}',
         r'\usepackage{nicefrac}',
     ],
-    'text.fontsize': fontsize,
     'text.color': '#555555',
     'axes.facecolor': '#EEEEEE', # axes background color
     'axes.edgecolor': '#BCBCBC', # axes edge color
@@ -114,7 +113,7 @@ params = {
     'keymap.yscale': 'l', # toggle scaling of y-axes ('log'/'linear')
     'keymap.xscale': ['L', 'k'], # toggle scaling of x-axes ('log'/'linear')
     'keymap.all_axes': 'a', # enable all axes
-    'contour.negative_linestyle': '--',
+    'contour.negative_linestyle': 'dashed'
 }
 rcParams.update(params)
 

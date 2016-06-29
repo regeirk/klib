@@ -46,10 +46,10 @@ def __init__(show=False):
         pylab.ion()
 
 
-def figure(fp=dict(), ap=dict(left=0.15, bottom=0.12, right=0.95, top=0.95, 
+def figure(fp=dict(), ap=dict(left=0.15, bottom=0.12, right=0.95, top=0.95,
     wspace=0.10, hspace=0.10), orientation='portrait'):
     """Creates a standard figure.
-    
+
     PARAMETERS
         fp (dictionary, optional) :
             Figure properties.
@@ -58,19 +58,20 @@ def figure(fp=dict(), ap=dict(left=0.15, bottom=0.12, right=0.95, top=0.95,
         orientation (string, optional) :
             Adjusts figure size according to selectec orientation. Valid
             options are 'landscape' (8 x 5.8), 'portrait' (8 x 11),
-            'squared' (8 x 8), 'worldmap' (8, 4.5), 'landscape.golden'
-            (8 x 4.9), 'portrait.golden' (8 x 12.9), 'landscape.letter'
-            (11 x 8), portrait.letter (8 x 11).
-    
+            'squared' (8 x 8), 'squared.half' (4 x 4),
+            'worldmap' (8, 4.5), 'landscape.golden' (8 x 4.9),
+            'portrait.golden' (8 x 12.9), 'landscape.letter' (11 x 8),
+            portrait.letter (8 x 11).
+
     RETURNS
         fig : Figure object
-    
+
     """
 
     __init__()
     golden = (5 ** 0.5 + 1.0) / 2.0    # The golden ratio
     letter = 11./8.
-    
+
     if 'figsize' not in fp.keys():
         if orientation == 'landscape':
             fp['figsize'] = [8, 8/letter]
@@ -92,14 +93,14 @@ def figure(fp=dict(), ap=dict(left=0.15, bottom=0.12, right=0.95, top=0.95,
             fp['figsize'] = [8, 11]
         else:
             raise Warning, 'Orientation \'%s\' not allowed.' % (orientation, )
-    
+
     fig = pylab.figure(**fp)
     fig.subplots_adjust(**ap)
-    
+
     return fig
 
 
-def legend(labels, ax=None, im=None, handles=None, bbox=None, 
+def legend(labels, ax=None, im=None, handles=None, bbox=None,
     loc='upper center', ncol=None):
     """Adds legend to plot.
 
@@ -128,8 +129,8 @@ def legend(labels, ax=None, im=None, handles=None, bbox=None,
                 _proxy.append(pylab.Rectangle((0, 0), 1, 1,
                     fc=pc.get_facecolor()[0], hatch=pc.get_hatch()))
                 _legend.append(lc)
-        ax.legend(_proxy, _legend, loc='upper center', 
-            bbox_to_anchor=bbox, ncol=int(round(len(labels)/2)), 
+        ax.legend(_proxy, _legend, loc='upper center',
+            bbox_to_anchor=bbox, ncol=int(round(len(labels)/2)),
             prop=fontP)
     #
     return
@@ -169,14 +170,14 @@ def timeformat(ax, dt=7, axis='x', orientation='portrait'):
         return
     except:
         pass
-    
+
     if dt <= 90:
         major = pylab.matplotlib.dates.DayLocator(range(1, 30, 10))
         minor = pylab.matplotlib.dates.DayLocator()
         fmt = u'%d/%m'
     elif dt <= 9131: # 25 years!
         major = pylab.matplotlib.dates.YearLocator(1)
-        minor = pylab.matplotlib.dates.MonthLocator(range(1, 13), 
+        minor = pylab.matplotlib.dates.MonthLocator(range(1, 13),
             bymonthday=1)
         fmt = u'%Y'
     else:
@@ -190,7 +191,7 @@ def timeformat(ax, dt=7, axis='x', orientation='portrait'):
     Ax.set_major_locator(major)
     Ax.set_minor_locator(minor)
     Ax.set_major_formatter(pylab.matplotlib.dates.DateFormatter(fmt))
-    
+
     if axis == 'x':
         ax.format_xdata = pylab.matplotlib.dates.DateFormatter((u'%Y-%m-%d'
             ' %H:%M'))
@@ -205,7 +206,7 @@ def timeformat(ax, dt=7, axis='x', orientation='portrait'):
 
 def dropspines(ax, dist=7):
     """Drops some spines from plot axis ax.
-    
+
     """
     for loc, spine in ax.spines.iteritems():
         if loc in ['left', 'bottom']:
@@ -214,15 +215,14 @@ def dropspines(ax, dist=7):
             spine.set_color('none') # don't draw spine
         else:
             raise ValueError('unknown spine location: %s' % loc)
-    # Turning off ticks where there's no spine 
+    # Turning off ticks where there's no spine
     ax.tick_params(which='both', direction='in')
     ax.xaxis.set_ticks_position('bottom')
     ax.yaxis.set_ticks_position('left')
     return
 
 
-def diagram_ts(T, S, p, lon, lat, use_teos10=True, is_state=True, dsigma=1.,
-    result='axis', debug=False, **kwargs):
+def diagram_ts(T, S, p=0, lon=None, lat=None, use_teos10=True, is_state=True, dsigma=1., result='default', debug=False, **kwargs):
     """Plots T-S diagram.
 
     Under TEOS-10, the observed values of practical salinity and in situ
@@ -232,18 +232,20 @@ def diagram_ts(T, S, p, lon, lat, use_teos10=True, is_state=True, dsigma=1.,
     Parameters
     ----------
     T : array like
-        In situ temperature [degC].
+        In situ or conservative temperature [degC].
     S : array like
-        Practical salinity [unitless], according to PSS-78.
+        Practical or absolute salinity [unitless, g kg-1], according.
     p : array like
-        Pressure [dbar]. If not give, assumes sea surface.
+        Pressure [dbar]. If not given, assumes sea surface.
     lon, lat: float, array like
         To plot state diagram, longitude and latitude have to be given
         in decimal degrees.
     use_teos10 : boolean, optional
         If true (default), uses conservative temperature and absolute
         salinity according to the Thermodynamic Equation of SeaWater
-        2010 (TEOS-10).
+        2010 (TEOS-10). If longitude and latitude are not given,
+        assumes that T and S have already been converted according to
+        TEOS10.
     is_state : boolean, optional
         If true (default), plots the state diagram: density
         anomalies referenced to surface.
@@ -271,7 +273,7 @@ def diagram_ts(T, S, p, lon, lat, use_teos10=True, is_state=True, dsigma=1.,
     kwargs['return_handles'] = True
 
     # Calculates absolute salinity and conservative temperature.
-    if use_teos10:
+    if use_teos10 and (lon is not None) and (lat is not None):
         SA = gsw.SA_from_SP(S, p, lon, lat)
         CT = gsw.CT_from_t(SA, T, p)
     else:
@@ -281,8 +283,8 @@ def diagram_ts(T, S, p, lon, lat, use_teos10=True, is_state=True, dsigma=1.,
     if debug == True:
         dump = ['Mean differences', '----------------']
         dT, dS = T - CT, S - SA
-        dump.append('Temperature: {:.4f} ± {:.4f}'.format(dT.mean(), dT.std()))
-        dump.append('Salinity: {:.4f} ± {:.4f}'.format(dS.mean(), dS.std()))
+        dump.append('Temperature: {:.4f} ï¿½ {:.4f}'.format(dT.mean(), dT.std()))
+        dump.append('Salinity: {:.4f} ï¿½ {:.4f}'.format(dS.mean(), dS.std()))
         dump.append('')
         print '\n'.join(dump)
 
@@ -292,8 +294,8 @@ def diagram_ts(T, S, p, lon, lat, use_teos10=True, is_state=True, dsigma=1.,
     # Calculates in-situ density from absolute salinity (SA) and conservative
     # temperature using `gsw` module.
     if is_state:
-        if (lon == None) | (lat == None):
-            raise ValueError('Missing longitude and latitude.')
+        #if (lon == None) | (lat == None):
+        #       raise ValueError('Missing longitude and latitude.')
         SA_lim = ax.get_xlim()
         CT_lim = ax.get_ylim()
         SA_range = numpy.linspace(SA_lim[0], SA_lim[1], 100)
@@ -306,45 +308,47 @@ def diagram_ts(T, S, p, lon, lat, use_teos10=True, is_state=True, dsigma=1.,
         cs = ax.contour(SA_grid, CT_grid, sigma_grid, sigma_range,
             colors='k', alpha=0.5, zorder=-98)
         cs.clabel(colors='k', alpha=0.5, fmt='%1.1f')
-    
+
     if result == 'default':
         return ax, hs
     elif result == 'results':
         return ax, hs, SA, CT
+    else:
+        raise ValueError('Invalid return type `{}`'.format(result))
 
 
 def plot_ts(*args, **kwargs):
     """Plots time-series.
-    
+
     RETURNS
         ax : axis
-    
+
     """
     kwargs['xscale'] = 'time'
     return plot(*args, **kwargs)
 
 
-def plot(x, y, title='', xlabel='', xunits='', ylabel='', yunits='', label='', 
+def plot(x, y, title='', xlabel='', xunits='', ylabel='', yunits='', label='',
     format='-', color='k', linewidth=1.5, markersize=7, fig=None, ax=None,
-    subplot=(1, 1, 1), sharex=None, sharey=None, xlim=None, ylim=None, 
-    xscale='linear', yscale='linear', xaxis='same', yaxis='same', 
+    subplot=(1, 1, 1), sharex=None, sharey=None, xlim=None, ylim=None,
+    xscale='linear', yscale='linear', xaxis='same', yaxis='same',
     scale=1., scale_label='', nospines=False, xtick='auto', ytick='auto',
     legend_label=None, orientation='portrait', style=None, alpha=1.,
     label_pos=[0.02, 0.95], new_line=False, return_handles=False, err=None,
     **kwargs):
     """Plot lines and/or markers.
-    
+
     PARAMETERS
         x (array like) :
         y (array like) :
         style (string, optional) :
-            Barb, quiver ...
+            Barb, quiver, scatter, ...
         return_handles (boolean, optional) :
             If true returns ax and plot handles.
 
     RETURNS
         ax[, handles] : axis
-    
+
     """
     if fig == None:
         fig = figure()
@@ -379,7 +383,7 @@ def plot(x, y, title='', xlabel='', xunits='', ylabel='', yunits='', label='',
             yunits = [yunits] * n
         if type(yscale) in [str, unicode]:
             yscale = [yscale] * n
-    
+
     if ax == None:
         if len(subplot) == 3:
             if xaxis == 'twin':
@@ -409,6 +413,7 @@ def plot(x, y, title='', xlabel='', xunits='', ylabel='', yunits='', label='',
     bbox = dict(edgecolor='w', facecolor='w', alpha=0.9)
     xmin, xmax = 9e9, 0
     handles = []
+    Ax = []
     for i in range(n):
         if i == 0:
             bx = ax
@@ -417,12 +422,15 @@ def plot(x, y, title='', xlabel='', xunits='', ylabel='', yunits='', label='',
                 bx = ax.twinx()
                 offset = 1 + (i - 1) * 1.1
                 bx.spines['right'].set_position(('axes', offset))
-                
+
             elif yaxis == 'twin':
                 bx = ax.twiny()
                 offset = 1 + (i - 1) * 2.1
                 bx.spines['bottom'].set_position(('axes', 0))
                 print 'Ahhhh!!!!'
+        #
+        Ax.append(bx)
+        #
 
         if xscale == 'log2':
             xs = numpy.log2(x[i])
@@ -446,7 +454,7 @@ def plot(x, y, title='', xlabel='', xunits='', ylabel='', yunits='', label='',
         # Sets scale label if not set
         if (scale != 1) & (scale_label == ''):
             scale_label = r'\times %s' % (scale)
-        
+
         args = kwargs.copy()
         args.update(dict(color=color[i], markerfacecolor=color[i],
             linewidth=linewidth[i], markersize=markersize[i], alpha=alpha[i]))
@@ -473,7 +481,7 @@ def plot(x, y, title='', xlabel='', xunits='', ylabel='', yunits='', label='',
         elif (xscale == 'log') & (yscale[i] != 'log'):
             handle, = bx.semilogx(xs, ys/scale, format[i], **args)
         elif err != None:
-            _draw_ellipse = False                
+            _draw_ellipse = False
             if 'ellipse' in err.keys():
                 if err['ellipse']:
                     _draw_ellipse = True
@@ -484,10 +492,18 @@ def plot(x, y, title='', xlabel='', xunits='', ylabel='', yunits='', label='',
             else:
                 handle, _, _= bx.errorbar(xs, ys/scale, xerr=err['x'],
                     yerr=err['y'], fmt=format[i], **args)
+        elif style == 'scatter':
+            handle = bx.scatter(xs, ys/scale, marker=format[i],
+                s=args['markersize'], c=args['color'], cmap=args['cmap'],
+                alpha=args['alpha'], zorder=args['zorder'], vmin=args['vmin'],
+                vmax=args['vmax'])
         else:
-            handle, = bx.plot(xs, ys/scale, format[i], **args)
+            handle = bx.plot(xs, ys/scale, format[i], **args)
         handles.append(handle)
-        xmin, xmax = min(xmin, xs.min()), max(xmax, xs.max())
+        try:
+            xmin, xmax = min(xmin, xs.min()), max(xmax, xs.max())
+        except:
+            xmin, xmax = 0, 1
         #
         if not (xlim == None):
             try:
@@ -526,9 +542,9 @@ def plot(x, y, title='', xlabel='', xunits='', ylabel='', yunits='', label='',
                 if ylabel[i]:
                     bx.set_ylabel(ur'\textbf{%s}' % (ylabel[i]))
             if yscale[i] == 'deg':
-                bx.set_yticklabels([common.num2latlon(0, tk, mode='each', 
+                bx.set_yticklabels([common.num2latlon(0, tk, mode='each',
                     x180=False, dtype='label')[0] for tk in bx.get_yticks()])
-    
+
     if xscale == 'log2':
         xmin, xmax = numpy.floor([-3., xmax])
         xticks = 2 ** numpy.arange(xmin, xmax)
@@ -555,7 +571,7 @@ def plot(x, y, title='', xlabel='', xunits='', ylabel='', yunits='', label='',
     if title:
         ax.set_title(title)
     if label:
-        ax.text(label_pos[0], label_pos[1], label, ha='left', va='top', 
+        ax.text(label_pos[0], label_pos[1], label, ha='left', va='top',
             transform=ax.transAxes, bbox=bbox, zorder=99)
     if xunits != '':
         ax.set_xlabel(ur'\textbf{%s} $\left[%s\right]$' % (xlabel, xunits))
@@ -575,19 +591,27 @@ def plot(x, y, title='', xlabel='', xunits='', ylabel='', yunits='', label='',
     if legend_label != None:
         # Draws legend
         legend(legend_label, ax=ax)
-    
+
     pylab.draw()
-    if return_handles:
-        return ax, handles
+    #
+    if len(Ax) == 1:
+        if return_handles:
+            return Ax[0], handles
+        else:
+            return Ax[0]
     else:
-        return ax
+        if return_handles:
+            return Ax, handles
+        else:
+            return Ax
 
 
 def contour(x, y, z, title='', xlabel='', xunits='', ylabel='', yunits='',
-    zunits='', label='', fig=None, ax=None, subplot=(1, 1, 1), sharex=None,
-    sharey=None, xlim=None, ylim=None, xscale='linear', yscale='linear',
-    zscale='linear', nospines=False, scale=1., scale_label=None, crange=None,
-    cticks=None, cmap=custom_cm.custom_viridis, colorbar=True, cbarpos=None,
+    zunits='', label='', label_pos=[0.02, 0.95], fig=None, ax=None,
+    subplot=(1, 1, 1), sharex=None, sharey=None, xlim=None, ylim=None,
+    xscale='linear', yscale='linear', zscale='linear', nospines=False,
+    scale=1., scale_label=None, crange=None, cticks=None,
+    cmap=custom_cm.custom_viridis, colorbar=True, cbarpos=None,
     orientation='horizontal', extend='both', **kwargs):
     """
     """
@@ -599,7 +623,7 @@ def contour(x, y, z, title='', xlabel='', xunits='', ylabel='', yunits='',
     if ax == None:
         if len(subplot) == 3:
             ax = fig.add_subplot(subplot[0], subplot[1], subplot[2],
-                sharex=sharex)
+                sharex=sharex, sharey=sharey)
         elif len(subplot) == 4:
             ax = fig.add_axes(subplot, sharex=sharex, sharey=sharey)
 
@@ -607,7 +631,7 @@ def contour(x, y, z, title='', xlabel='', xunits='', ylabel='', yunits='',
         dropspines(ax)
     ax.minorticks_on()
     ax.tick_params(direction='out', which='both')
-    
+
     norm = None
     # Base 10 logarithmic scale
     if zscale == 'log':
@@ -628,7 +652,7 @@ def contour(x, y, z, title='', xlabel='', xunits='', ylabel='', yunits='',
         #crange = numpy.arange(0, 256)
         crange = (numpy.log10(zrange) + 2) / 0.015
         cticks = dict(values=(numpy.log10(zrange) + 2) / 0.015, text=zrange)
-    
+
     # Setting the color ranges
     if (crange == None) & (cticks == None):
         cmajor, cminor, crange, cticks, extend = common.step(z / scale,
@@ -641,21 +665,21 @@ def contour(x, y, z, title='', xlabel='', xunits='', ylabel='', yunits='',
             cticks = dict(values = crange[::4])
     if zscale == 'log':
         # Checks if tick values are all integers.
-        cticks['text'] = ['10$^{{{}}}$'.format(tick) for tick in 
+        cticks['text'] = ['10$^{{{}}}$'.format(tick) for tick in
             cticks['values']]
     elif zscale == 'log2':
         cticks['text'] = ['2$^{{{%d}}}$' % (tick) for tick in cticks['values']]
-    
+
     # Sets scale label according to scale
     if scale_label == None:
         log = int(numpy.log10(scale))
         scale = 10 ** log
-        if log <> 0:
+        if log != 0:
             scale_label = r'\times 10^{%d}' % (log)
             crange /= scale
         else:
             scale_label = ''
-    
+
     xmin, xmax = 9e9, 0
     xmin, xmax = min(xmin, x.min()), max(xmax, x.max())
     ymin, ymax = 9e9, 0
@@ -676,11 +700,11 @@ def contour(x, y, z, title='', xlabel='', xunits='', ylabel='', yunits='',
         ymin, ymax = y[sel[0]], y[sel[-1]]
     except:
         pass
-    
+
     # The contour!
-    im = ax.contourf(x, y, z / scale, crange, extend=extend, cmap=cmap, 
+    im = ax.contourf(x, y, z / scale, crange, extend=extend, cmap=cmap,
         norm=norm)
-    
+
     # Draws colorbar
     if colorbar:
         corners = ax.get_position().corners()
@@ -690,26 +714,26 @@ def contour(x, y, z, title='', xlabel='', xunits='', ylabel='', yunits='',
             'horizontal']:
             if cbarpos == None:
                 cbarpos = [0.05, -0.08, -0.1, 0.02]
-            position = numpy.array([corners[0, 0], corners[0, 1], 
+            position = numpy.array([corners[0, 0], corners[0, 1],
                 corners[2, 0] - corners[0, 0], 0]) + numpy.array(cbarpos)
             co = 'horizontal'
         elif orientation in ['portrait', 'vertical']:
             if cbarpos == None:
                 cbarpos = [0.03, 0.025, 0.017, -0.05]
-            position = numpy.array([corners[2, 0], corners[2, 1], 0, 
+            position = numpy.array([corners[2, 0], corners[2, 1], 0,
                 corners[3, 1] - corners[2, 1]]) + numpy.array(cbarpos)
             co = 'vertical'
         else:
             raise Warning('Invalid orientation %s.' % orientation)
         cax = fig.add_axes(position)
-        pylab.colorbar(im, cax=cax, orientation=co, ticks=cticks['values'], 
+        pylab.colorbar(im, cax=cax, orientation=co, ticks=cticks['values'],
             extend=extend)
         if 'text' in cticks.keys():
             if co == 'horizontal':
                 cax.set_xticklabels(cticks['text'])
             else:
                 cax.set_yticklabels(cticks['text'])
-    
+
     if title:
         ax.set_title(title)
     if xunits != '':
@@ -727,7 +751,7 @@ def contour(x, y, z, title='', xlabel='', xunits='', ylabel='', yunits='',
 			pyplot.locator_params(axis='x', nbins=3)
 		except:
 			pass
-		ax.set_xticklabels([common.num2latlon(i, 0, mode='each', 
+		ax.set_xticklabels([common.num2latlon(i, 0, mode='each',
 			x180=True, dtype='label')[1] for i in ax.get_xticks()])
     if yscale == 'time':
         timeformat(ax, dt=ymax-ymin, axis='y')
@@ -739,12 +763,12 @@ def contour(x, y, z, title='', xlabel='', xunits='', ylabel='', yunits='',
             ci, cj, ha, va = 1.05, 0.5, 'left', 'center'
         else:
             ci, cj, ha, va = 0.5, -0.15, 'left', 'top'
-        cax.text(ci, cj, r'$\left[%s %s\right]$' % (scale_label, zunits), ha=ha, 
+        cax.text(ci, cj, r'$\left[%s %s\right]$' % (scale_label, zunits), ha=ha,
             va=va, transform=cax.transAxes)
     if label:
-        ax.text(0.02, 0.95, label, ha='left', va='top', transform=ax.transAxes,
-            bbox=bbox)
-    
+        ax.text(label_pos[0], label_pos[1], label, ha='left', va='top',
+            transform=ax.transAxes, bbox=bbox)
+
     if xlim == None:
         xlim = [xmin, xmax]
     if ylim == None:
@@ -759,7 +783,7 @@ def contour(x, y, z, title='', xlabel='', xunits='', ylabel='', yunits='',
 def wavelet_plot(tm, period, z, power, coi, glbl, scale_avg, fft=None,
                  fft_period=None, power_signif=None, glbl_signif=None,
                  scale_signif=None, pminmax=[], labels=dict(), normalized=True,
-                 std=1., ztrend=None, wtrend=None, show=False, save='', 
+                 std=1., ztrend=None, wtrend=None, show=False, save='',
                  ftype='png', levels=None, cmap=cm.GMT_no_green):
     """Plots results from wavelet analysis.
 
@@ -836,7 +860,7 @@ def wavelet_plot(tm, period, z, power, coi, glbl, scale_avg, fft=None,
     """
     t1 = time()
     __init__()
-    
+
     # Some constants
     grey = (0.6, 0.6, 0.6)
 
@@ -846,7 +870,7 @@ def wavelet_plot(tm, period, z, power, coi, glbl, scale_avg, fft=None,
     elif show == True:
         pylab.ion()
     else:
-        raise Warning, 'Invalid show option.'        
+        raise Warning, 'Invalid show option.'
 
     # Setting undefined label strings.
     if 'name' not in labels.keys():
@@ -898,7 +922,7 @@ def wavelet_plot(tm, period, z, power, coi, glbl, scale_avg, fft=None,
     yticks = Yticks * 365.25
     coix = numpy.concatenate([[tm[0]], tm, [tm[-1]], [tm[-1]],
         [tm[0]], [tm[0]]])
-    coiy = numpy.concatenate([[0.75], coi, [0.75], [period[-1]], 
+    coiy = numpy.concatenate([[0.75], coi, [0.75], [period[-1]],
         [period[-1]], [0.75]])
 
     # First plot, the original time-series, its trends and some formatting.
@@ -925,7 +949,7 @@ def wavelet_plot(tm, period, z, power, coi, glbl, scale_avg, fft=None,
     ax.yaxis.set_major_locator(ticker.MaxNLocator(5))
     ax.minorticks_on()
     ax.grid(True, zorder=0)
-    
+
     # Second subplot, the normalized wavelet power spectrum and significance
     # level contour lines and cone of influece hatched area.
     bx = fig.add_axes([x0, y2, w0, h2], sharex=ax)
@@ -934,7 +958,7 @@ def wavelet_plot(tm, period, z, power, coi, glbl, scale_avg, fft=None,
     if type(power_signif).__name__ == 'ndarray':
         bx.contour(tm, numpy.log2(period), power_signif, [-99, 1], colors='k',
             linewidths=1.)
-    bx.fill_between(tm, numpy.log2(period[-1]), numpy.log2(coi), color='k', 
+    bx.fill_between(tm, numpy.log2(period[-1]), numpy.log2(coi), color='k',
         alpha='0.3', hatch='x')
     try:
         bx.axhline(numpy.log2(min(pminmax)), linewidth=2, color='w', alpha=0.8)
@@ -1040,7 +1064,7 @@ def wavelet_plot(tm, period, z, power, coi, glbl, scale_avg, fft=None,
 def add_second_axis(ax, axis='x', tick='top', xtick=None, ytick=None,
     xlim=None, ylim=None, hide_tick_labels=''):
     """Adds a second axis with different units.
-    
+
     """
     if xtick == None:
         _xtick = [0.5, 1, 2.5, 5, 25]
@@ -1054,7 +1078,7 @@ def add_second_axis(ax, axis='x', tick='top', xtick=None, ytick=None,
         xlim = ax.get_xlim()
     if ylim == None:
         ylim = ax.get_ylim()
-    
+
     corners = ax.get_position().corners()
     position = [corners[0, 0], corners[0, 1], corners[2, 0]-corners[0, 0],
         corners[3, 1]-corners[0, 1]]
@@ -1134,7 +1158,7 @@ def windrose(wind=None, speed=None, direction=None, npoints=32, bins=None,
             Sets the number of columns for the legend. If set to zero,
             then no legend is plotted. In this case it also returns the
             reference object to the for later use.
-        
+
     """
     # Checks input parameters
     if wind != None:
@@ -1179,7 +1203,7 @@ def windrose(wind=None, speed=None, direction=None, npoints=32, bins=None,
     delta_half = delta / 2.
     rows = compass.list_cardinal_points(mode='radian')
     cardinal_angles = numpy.array([r[2] for r in rows])
-    
+
     # Distributes along direction and speed.
     cols = len(bins) + 1
     stats = numpy.zeros((npoints+1, cols+1))
@@ -1218,7 +1242,7 @@ def windrose(wind=None, speed=None, direction=None, npoints=32, bins=None,
 
     # Creates a blank bar, just in case there is no data to plot.
     p = ax.bar(0, 0.1, bottom=0, width=numpy.pi, linewidth=0, alpha=0)
-    
+
     p_list = []
     bottom = numpy.zeros(npoints)
     for col in range(cols):
@@ -1229,13 +1253,13 @@ def windrose(wind=None, speed=None, direction=None, npoints=32, bins=None,
             else:
                 legend_label = r'${:.1f}$--${:.1f}$: $({:.1f}\;\%)$'.format(
                     legend_labels[col], legend_labels[col+1],
-                    stats[:, col].sum()*100.)
+                    stats[1:, col+1].sum()*100.)
         else:
             if legend_ncol == 0:
                 legend_label = r'$>{:.1f}$'.format(legend_labels[col])
             else:
                 legend_label = r'$>{:.1f}$: $({:.1f}\;\%)$'.format(
-                    legend_labels[col], stats[:, col].sum()*100.)
+                    legend_labels[col], stats[1:, col+1].sum()*100.)
         #
         p = ax.bar(_from_cardinal_to_angle(cardinal_angles) - delta_half,
             stats[1:, col+1], bottom=bottom, width=delta, linewidth=0.25,
@@ -1243,7 +1267,7 @@ def windrose(wind=None, speed=None, direction=None, npoints=32, bins=None,
         p_list.append(p)
         #
         bottom += stats[1:, col+1]
-    
+
     # Updates
     cardinal_labels = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
     cardinal_angles = numpy.arange(0, 360, 45)
@@ -1260,7 +1284,7 @@ def windrose(wind=None, speed=None, direction=None, npoints=32, bins=None,
     if label:
         ax.text(0.5, 0.15, label, fontsize='large', ha='center', va='baseline',
             alpha=0.6, transform=ax.transAxes)
-    
+
     if legend_ncol == 0:
         return stats, ax, p_list
     else:

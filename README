@@ -1,5 +1,4 @@
-kLib
-====
+kLib.
 
 A collection of Python functions for applications in oceanography and science 
 in general. This module references to the numpy, scipy, pylab and probably 
@@ -8,13 +7,8 @@ other Python packages too.
 Functions are grouped in different modules such as statistics, file management, 
 graphics, mapping, interpolation and common functions.
 
-This library is still in it's infancy and under development. Eventually everything
-will become depreciated and moved to the `atlantis` module.
-
-
 MODULES
 -------
-
 - common
 - dynamics
 - file (filemngmnt)
@@ -24,35 +18,34 @@ MODULES
 - interpolate
 - signal
 - stats 
-
+    
 
 DISCLAIMER
 ----------
-
 This software may be used, copied, or redistributed as long as it
 is not sold and this copyright notice is reproduced on each copy
 made. This routine is provided as is without any express or implied
 warranties whatsoever.
 
-
 INSTALLATION
 ------------
-
 Copy all the contents into a location included in the Python search
 path. On Linux distribution one such option is
 
-> `~/.local/lib/python2.x/site-packages/klib`
+    ~/.local/lib/python2.x/site-packages/klib
 
+TODO
+----
+Considering that the provided code works properly, the following
+steps are to include the cross-wavelet transform and wavelet
+coherence into the module.
 
 AUTHORS
 -------
-
-Sebastian Krieger (sebastian at nublia.com)
-
+Sebastian Krieger (sebastian@nublia.com)
 
 REVISION
 --------
-
 7 (2016-06-28 21:59 -0300)
 6 (2016-02-05 00:00 -0300)
 5 (2016-05-19 00:00 -0300)

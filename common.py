@@ -88,7 +88,7 @@ def year2num(y):
         for _y, _d in zip(year, julian_day)]
     #
     if return_array:
-        return num
+        return asarray(num)
     else:
         return num[0]
 
@@ -160,7 +160,7 @@ def season(t, hemisphere='S', result='number'):
     hemisphere : string, optional
         Indicates whether the northern or southern hemisphere is
         considered. Valid values are `N` or `S`.
-    return : string, optional
+    result : string, optional
         If set to `number` (default) returns either 1, 2, 3 or 4 for
         winter, spring, summer, fall, respectively. If set to `string`
         returns season string.
@@ -407,18 +407,22 @@ lon360 = lambda x: lon_n(x, 360)
 def profiler(N, n, t0, t1, t2):
     """Profiles the module usage.
 
-    PARAMETERS
-        N, n (int) :
-            Number of total elements (N) and number of overall elements
-            completed (n).
-        t0, t1, t2 (float) :
-            Time since the Epoch in seconds for the current module
-            (t0), subroutine (t1) and step (t2).
-    RETURNS
-        s (string) :
-            String containing the analysis result.
+    Parameters
+    ----------
+    N, n (int) :
+        Number of total elements (N) and number of overall elements
+        completed (n).
+    t0, t1, t2 (float) :
+        Time since the Epoch in seconds for the current module
+        (t0), subroutine (t1) and step (t2).
+    
+    Returns
+    -------
+    s (string) :
+        String containing the analysis result.
 
-    EXAMPLE
+    Example
+    -------
 
     """
     n, N = float(n), float(N)

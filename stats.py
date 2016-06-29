@@ -21,7 +21,7 @@ REVISION
 __version__ = '$Revision: 4 $'
 # $Source$
 
-__all__ = ['acorr', 'basics', 'wavelet_analysis', 'polyfit2d', 'polyval2d', 
+__all__ = ['acorr', 'basics', 'wavelet_analysis', 'polyfit2d', 'polyval2d',
     'local_maxima', 'detect_peaks']
 
 import os
@@ -91,21 +91,22 @@ def basics(z, dt=None, oldschool=False):
     t1 = time()
 
     # Transforms input arrays numpy masked arrays.
-    z = numpy.ma.asarray(z)
-    mask = (z.mask | numpy.isnan(z.data)).any(axis=0)
+    z = numpy.ma.masked_invalid(z)
     if dt == None:
         dt = 1.
 
     dim = len(z.shape)
     if dim == 1:
-        z = numpy.reshape(z.size, 1, 1)
+        z = z.reshape(z.size, 1, 1)
+        print 'Hey! ', z.shape
     elif dim == 2:
         c, b = z.shape
-        z = numpy.reshape(c, b, 1)
+        z = z.reshape(c, b, 1)
     elif dim > 3:
         raise Warning, 'Higher dimensions than three are not implemented.'
     c, b, a = z.shape
     t = numpy.arange(c) * dt
+    mask = z.mask
 
     t2 = time()
     s = 'Calculating mean... '
@@ -132,7 +133,7 @@ def basics(z, dt=None, oldschool=False):
     zmean[mask] = numpy.nan
     zmean.mask = mask
     stdout.write(s)
-    
+
     if not oldschool:
         t2 = time()
         s = 'Calculating standard deviation... '
@@ -173,7 +174,7 @@ def basics(z, dt=None, oldschool=False):
 
 def local_maxima(z, cyclic=False, epsilon=0.):
     """Calculates the local minima and maxima from the input field.
-    
+
     PARAMETERS
         z (array like) :
             Input signal.
@@ -181,12 +182,12 @@ def local_maxima(z, cyclic=False, epsilon=0.):
             If true, assumes cycles at the borders.
         epsilon (float, optional) :
             Acceptable error, default value is 0.
-    
+
     RETURNS
         mmap (array like):
             Boolean Map with the locations of the local minima and
             maxima.
-    
+
     """
     if numpy.ndim(z) != 2:
         raise Warning, 'Only two-dimensional mapping implemented.'
@@ -226,7 +227,7 @@ def local_maxima(z, cyclic=False, epsilon=0.):
 def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
                      siglvl=0.95, loc=None, onlyloc=False, periods=None,
                      sel_periods=[], show=False, save='', dsave='', prefix='',
-                     labels=dict(), title=None, name=None, fpath='', 
+                     labels=dict(), title=None, name=None, fpath='',
                      fpattern='', std=dict(), crange=None, levels=None,
                      cmap=cm.GMT_no_green, debug=False):
     """Continuous wavelet transform and significance analysis.
@@ -256,7 +257,7 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
             values are 'Morlet' (default), 'Paul' or 'Mexican hat'.
         alpha (float or dictionary, optional) :
             Lag-1 autocorrelation for background noise.  Default value
-            is 0.0 (white noise). If different autocorrelation 
+            is 0.0 (white noise). If different autocorrelation
             coefficients should be used for different locations, then
             the input should contain a dictionary with 'lon', 'lat',
             'map' keys as for the std parameter.
@@ -291,7 +292,7 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
         title (string, array like, optional) :
             Title of each of the selected periods.
         name (string, array like, optional) :
-            Name of each of the selected periods. Used when saving the 
+            Name of each of the selected periods. Used when saving the
             results to files.
         fpath (string, optional) :
             Path for the source files to be loaded when memory issues
@@ -347,10 +348,10 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
                 fft --
                     Fourier spectrum.
                 fft_first --
-                    Fourier spectrum of the first half of the 
+                    Fourier spectrum of the first half of the
                     time-series.
                 fft_second --
-                    Fourier spectrum of the second half of the 
+                    Fourier spectrum of the second half of the
                     time-series.
                 fft_period --
                     Fourier periods (in days).
@@ -366,7 +367,7 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
     # Resseting unit labels for hovmoller plots
     hlabels = dict(labels)
     hlabels['units'] = ''
-    
+
     # Setting some titles and paths
     if name == None:
         name = title
@@ -383,7 +384,7 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
         std['map'] = True
     else:
         std['map'] = False
-    
+
     # Lag-1 autocorrelation parameter
     if type(alpha).__name__ == 'dict':
         if 'lon' not in alpha.keys():
@@ -401,7 +402,7 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
             alpha = {'val': alpha, 'mean': alpha, 'map': False, 'calc': False}
 
     # Shows some of the options on screen.
-    print ('Average Lag-1 autocorrelation for background noise: %.2f' % 
+    print ('Average Lag-1 autocorrelation for background noise: %.2f' %
         (alpha['mean']))
     if save:
         print 'Saving result figures in \'%s\'.' % (save)
@@ -451,7 +452,7 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
             z = z.reshape(c, b, a)
         if tm.size != c:
             raise Warning, 'Time and data lengths do not match.'
-    
+
     # Transforms coordinate arrays into numpy arrays
     s = type(lat).__name__
     if s in ['int', 'float', 'float64']:
@@ -506,7 +507,7 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
         c, b, a = tm.size, lat.size, lon.size
     else:
         N = a * b
-    
+
     # Making sure that the longitudes range from -180 to 180 degrees and
     # setting the squared search radius R2.
     try:
@@ -517,7 +518,7 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
     if numpy.isnan(R2):
         R2 = 65535.
     if loc != None:
-        loc = numpy.asarray([[common.lon180(item[0]), item[1]] for item in 
+        loc = numpy.asarray([[common.lon180(item[0]), item[1]] for item in
             loc])
 
     # Initializes important result variables such as the global wavelet power
@@ -598,19 +599,19 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
         fft_tc = numpy.round(fft_ta + fft_tb) / 2
         fft_ia = pylab.find((t >= fft_ta) & (t <= fft_tc))
         fft_ib = pylab.find((t >= fft_tc) & (t <= fft_tb))
-        fft_N = int(2 ** numpy.ceil(numpy.log2(max([len(fft_ia), 
+        fft_N = int(2 ** numpy.ceil(numpy.log2(max([len(fft_ia),
             len(fft_ib)]))))
         fft_N2 = fft_N / 2 - 1
         fft_dt = t[fft_ib].mean() - t[fft_ia].mean()
-        
+
         for i in range(a):
             # Some string output.
             try:
-                Y, X = common.num2latlon(lon[i], lat[j], mode='each', 
+                Y, X = common.num2latlon(lon[i], lat[j], mode='each',
                     padding=False)
             except:
                 Y = X = '?'
-            
+
             # Extracts individual time-series from the whole dataset and
             # sets or calculates its standard deviation, squared standard
             # deviation and finally the normalized time-series.
@@ -647,7 +648,7 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
             std_map[j, i] = fstd
             zero[:, i] = fz
             fz = (fz - fz.mean()) / fstd
-            
+
             # Calculates the distance of the current point to any special
             # location set in the 'loc' parameter. If only special locations
             # are to be analysed, then skips all other ones. If the input
@@ -662,7 +663,7 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
                     dist = []
             if (dist > R2).all() & (loc != 'all') & onlyloc:
                 continue
-            
+
             # Determines the lag-1 autocorrelation coefficient to be used in
             # the significance test from the input parameter
             if alpha['calc']:
@@ -684,7 +685,7 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
 
             # Calculates the continuous wavelet transform using the wavelet
             # Python module. Calculates the wavelet and Fourier power spectrum
-            # and the periods in days. Also calculates the Fourier power 
+            # and the periods in days. Also calculates the Fourier power
             # spectrum for the first and second halves of the timeseries.
             wave, scales, freqs, coi, fft, fftfreqs = wavelet.cwt(fz, dt, dj,
                 s0, J, mother)
@@ -693,14 +694,14 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
             period = 1. / freqs
             fftperiod = 1. / fftfreqs
             psel = pylab.find(period <= pmax.max())
-            
+
             # Calculates the Fourier transform for the first and the second
             # halves ot the time-series for later trend analysis.
             fft_1 = numpy.fft.fft(fz[fft_ia], fft_N)[1:fft_N/2] / fft_N ** 0.5
             fft_2 = numpy.fft.fft(fz[fft_ib], fft_N)[1:fft_N/2] / fft_N ** 0.5
             fft_p1 = abs(fft_1 * fft_1.conj())
             fft_p2 = abs(fft_2 * fft_2.conj())
-            
+
             # Creates FFT return array and stores the spectrum accordingly
             try:
                 fft_spectrum[:, j, i] = fft_power * fstd2
@@ -760,11 +761,11 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
                     les = pylab.find((fftperiod >= pmin[k - 1]) &
                         (fftperiod <= pmax[k - 1]))
                     fminmax = [fftperiod[les[0]], fftperiod[les[-1]]]
-                
+
                 scale_avg = numpy.ma.array((dj * dt / Cdelta *
                     scale_avg_full[sel, :].sum(axis=0)))
                 scale_avg_signif, tmp = wavelet.significance(1., dt, scales,
-                    2, alpha_ij, significance_level=siglvl, 
+                    2, alpha_ij, significance_level=siglvl,
                     dof=[scales[sel[0]], scales[sel[-1]]], wavelet=mother)
                 scale_avg.mask = (scale_avg < scale_avg_signif)
                 if mem_error:
@@ -808,10 +809,10 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
                             try:
                                 hloc.append(loc[(dist < R2)][0, 0])
                             except:
-                                pass                            
+                                pass
                         if save:
                             try:
-                                sv = '%s/tz_%s_%s_%d' % (save, prefix, 
+                                sv = '%s/tz_%s_%s_%d' % (save, prefix,
                                     common.num2latlon(lon[i], lat[j]), k)
                             except:
                                 sv = '%s' % (save)
@@ -844,8 +845,8 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
                 else:
                     fm.save_map(lon, tm, avg_spectrum[k, :, j, :].data,
                         sv, lat[j])
-        
-        if ((dim > 1) and (show or (save != '')) & (not onlyloc) and 
+
+        if ((dim > 1) and (show or (save != '')) & (not onlyloc) and
                 len(hloc) > 0):
             hloc = common.lon360(numpy.unique(hloc))
             if save:
@@ -900,13 +901,13 @@ def wavelet_analysis(z, tm, lon=None, lat=None, mother='Morlet', alpha=0.0,
 
 
 def polyfit2d(x, y, z, order=3, mode='full', debug=False):
-    """Two-dimensional polynomial fit. Based uppon code provided by 
+    """Two-dimensional polynomial fit. Based uppon code provided by
     Joe Kington.
-    
+
     PARAMETERS
         mode (string, optional) :
             'full' (default), 'linear', 'diagonal'
-    
+
     References:
         http://stackoverflow.com/questions/7997152/
             python-3d-polynomial-surface-fit-order-dependent/7997925#7997925
@@ -934,7 +935,7 @@ def polyfit2d(x, y, z, order=3, mode='full', debug=False):
 
 
 def polyval2d(x, y, m, debug=False):
-    """Values to two-dimensional polynomial fit. Based uppon code 
+    """Values to two-dimensional polynomial fit. Based uppon code
         provided by Joe Kington.
     """
     order = int(numpy.sqrt(len(m))) - 1
@@ -962,27 +963,27 @@ def detect_peaks(image, threshold=0.):
     # define an 8-connected neighborhood
     neighborhood = ndimage.morphology.generate_binary_structure(2,2)
 
-    # apply the local maximum filter; all pixel of maximal value 
+    # apply the local maximum filter; all pixel of maximal value
     # in their neighborhood are set to 1
-    local_max = ndimage.filters.maximum_filter(image, 
+    local_max = ndimage.filters.maximum_filter(image,
         footprint=neighborhood)==image
-    local_min = ndimage.filters.minimum_filter(image, 
+    local_min = ndimage.filters.minimum_filter(image,
         footprint=neighborhood)==image
-    # local_max and local_min are masks that contains the peaks we are 
+    # local_max and local_min are masks that contains the peaks we are
     # looking for, but also the background. In order to isolate the peaks we
     # must remove the background from the mask.
 
     # we create the mask of the background
     background = (abs(image) <= threshold)
 
-    # a little technicality: we must erode the background in order to 
-    # successfully subtract it form local_max and local_min, otherwise a line 
-    # will appear along the background border (artifact of the local maximum 
+    # a little technicality: we must erode the background in order to
+    # successfully subtract it form local_max and local_min, otherwise a line
+    # will appear along the background border (artifact of the local maximum
     # and minimum filters)
-    eroded_background = ndimage.morphology.binary_erosion(background, 
+    eroded_background = ndimage.morphology.binary_erosion(background,
         structure=neighborhood, border_value=1)
 
-    # we obtain the final mask, containing only peaks, 
+    # we obtain the final mask, containing only peaks,
     # by removing the background from the local_max mask
     detected_peaks = local_max + local_min - eroded_background
 
@@ -991,7 +992,7 @@ def detect_peaks(image, threshold=0.):
 
 def climatology(t, z, w=None, result='year'):
     """Returns monthly climatology of a time-series.
-    
+
     PARAMETERS
         t (array like) :
             Time in matplotlib time format.
@@ -1000,26 +1001,26 @@ def climatology(t, z, w=None, result='year'):
         w (array like) :
             Data weight, should have same dimensions as 'z'.
         result (string) :
-            If set to 'year', returns only one year of data. If set to 
+            If set to 'year', returns only one year of data. If set to
             'full', returns the climatology for every time t.
-    
+
     RETURN
         z_clim (array like) :
             Climatological averages.
-    
+
     """
     # Checks for proper dimensions
     shape = z.shape
     if len(shape) == 1:
         z = z[:, None, None]
     c, b, a = z.shape
-    
+
     if w != None:
         if w.shape != z.shape:
             raise Warning, 'Data and weight arrays are not the same.'
 
-    # Starts converting time to datetime format. Determines the start and end 
-    # of the relevant dataset to ensure that only whole years are used. 
+    # Starts converting time to datetime format. Determines the start and end
+    # of the relevant dataset to ensure that only whole years are used.
     # Initializes climatology variable and calculates the averages.
     Time = common.num2ymd
     try:
@@ -1037,11 +1038,11 @@ def climatology(t, z, w=None, result='year'):
         if w == None:
             z_clim[i, :, :] = z[selt, :, :].mean(axis=0)
         else:
-            z_clim[i, :, :] = ((z[selt, :, :] * w[selt, :, :]).sum(axis=0) / 
+            z_clim[i, :, :] = ((z[selt, :, :] * w[selt, :, :]).sum(axis=0) /
                 w[selt, :, :].sum(axis=0))
     #
     z_clim.mask = z_clim.mask | numpy.isnan(z_clim.data)
-    
+
     if result == 'full':
         z_clim = z_clim[Time[:, 1]-1]
 

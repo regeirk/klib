@@ -21,21 +21,25 @@ __version__ = '$Revision: 1 $'
 __all__ = ['fftnegativeshift', 'next_power_of_two', 'power_spectral_density',
     'errors', 'climatology']
 
+from copy import copy
+from datetime import datetime
 from matplotlib.dates import drange, num2date
-from numpy import (arange, arctan2, array, asarray, ceil, concatenate, cos, 
-    deg2rad, digitize, empty, exp, flatnonzero, fliplr, flipud, floor, 
-    iscomplex, isnan, linalg, log2, ma, median, nan, ones, rad2deg, sin, take, 
-    unique, zeros)
+from numpy import (arange, arctan2, array, asarray, ceil, concatenate, cos,
+    deg2rad, digitize, empty, exp, flatnonzero, fliplr, flipud, floor,
+    iscomplex, isnan, linalg, log2, ma, median, nan, ndarray, ones, rad2deg,
+    sin, take, unique, zeros, append, hanning, convolve, pi)
 from scipy import interpolate
 from scipy.fftpack import fft2, fftfreq, fftshift
 from scipy.misc import factorial
 from scipy.signal import fftconvolve, detrend
 from scipy.stats import binned_statistic
+from sys import stdout
+from time import time
 
 import common
 
 
-def speeddir_to_vector(m, a, dtype='from'):
+def speeddir_to_vector(m, a, dtype='from', masked=True):
     """
     Converts polar vector notation to complex vector notation, assuming
     geographical angle origin convention at north.
@@ -55,10 +59,10 @@ def speeddir_to_vector(m, a, dtype='from'):
     -------
     uv : array like
         Vector in complex notation (u + 1j*v).
-    
+
     """
     # Converts angles from degrees to radians, assuming geographical angle
-    # origin convention at north rotating clockwise. Check 
+    # origin convention at north rotating clockwise. Check
     # <http://wx.gmu.edu/dev/clim301/lectures/wind/wind-uv.html> for further
     # explanations.
     if dtype == 'from':
@@ -68,14 +72,19 @@ def speeddir_to_vector(m, a, dtype='from'):
     else:
         raise ValueError('Invalid data type `{}`.'.format(dtype))
     # Calcultes vector coordinates.
-    return m * cos(a) + 1j * m * sin(a)
+    if masked:
+        uv = ma.masked_invalid(m * cos(a) + 1j * m * sin(a))
+        uv.data[uv.mask] = 0
+        return uv
+    else:
+        return m * cos(a) + 1j * m * sin(a)
 
 
 def vector_to_speeddir(uv, dtype='from'):
     """
     Converts complex vector to polar vector, assuming geographical angle
     origin convention at north.
-    
+
     Parameters
     ----------
     uv : array like
@@ -84,7 +93,7 @@ def vector_to_speeddir(uv, dtype='from'):
         If `from`, uses convention that vector indicates direction from
         which it is comming (e.g. wind from direction). If `to`
         indicates direction to which it is pointing (e.g. currents).
-    
+
     Returns
     -------
     m, a : array like
@@ -94,7 +103,7 @@ def vector_to_speeddir(uv, dtype='from'):
     m = (uv.real**2 + uv.imag**2)**0.5
     a = rad2deg(arctan2(uv.imag, uv.real))
     # Converts angle from mathematical direction to meteorological direction.
-    # Check <http://wx.gmu.edu/dev/clim301/lectures/wind/wind-uv.html> for 
+    # Check <http://wx.gmu.edu/dev/clim301/lectures/wind/wind-uv.html> for
     # further explanations.
     if dtype == 'from':
         a = common.lon360(270 - a)
@@ -110,11 +119,11 @@ def derivative(A, axis, p=1, q=3, mask=None):
     """Higher order differential.
 
     Calculates the p-th derivative of `A` using stencils of width n.
-    
+
     The gradient is computed using central differences in the interior
     and first differences at the boundaries. The returned gradient hence
     has the same shape as the input array.
-    
+
     Parameters
     ----------
     A : array like
@@ -130,7 +139,7 @@ def derivative(A, axis, p=1, q=3, mask=None):
         Length of the stencil used for centered differentials. The
         length has to be odd numbered. Default is q=3.
     mask : array like, optional :
-    
+
     Returns
     -------
     dA : array like
@@ -146,7 +155,7 @@ def derivative(A, axis, p=1, q=3, mask=None):
     Shriver, J. F. Effects of stencil width on surface ocean geostrophic
     velocity and vorticity estimation from gridded satellite altimeter
     data. Journal of Geophysical Research, 2012, 117, C03029.
-        
+
     """
     # Checks size of A and axis.
     if A.shape != axis.shape:
@@ -170,13 +179,13 @@ def derivative(A, axis, p=1, q=3, mask=None):
         else:
             u, v = 0, I - i
         dA[u:v] += (coeffs[u:v, i+q_left] * A[u+i:v+i])
-    
+
     return dA
 
 
 def _derivative_stencil_coefficients(axis, p=1, q=3):
     """Calculates the coefficients needed for the derivative.
-    
+
     Parameters
     ----------
     axis : array like
@@ -188,25 +197,25 @@ def _derivative_stencil_coefficients(axis, p=1, q=3):
     q : integer, optional
         Length of the stencil used for centered differentials. The
         length has to be odd numbered. Default is q=3.
-    
+
     Returns
     -------
     Coefficients (a_q) needed for the linear combination of `q` points
     to get the first derivative according to Arbic et al. (2012)
     equations (20) and (22). At the boundaries forward and backward
     differences approximations are calculated.
-    
+
     References
     ----------
     Cushman-Roisin, B. & Beckers, J.-M. Introduction to geophysical
     fluid dynamics: Physical and numerical aspects Academic Press, 2011,
     101, 828.
-    
+
     Arbic, Brian B. Scott, R. B.; Chelton, D. B.; Richman, J. G. &
     Shriver, J. F. Effects of stencil width on surface ocean geostrophic
     velocity and vorticity estimation from gridded satellite altimeter
     data. Journal of Geophysical Research, 2012, 117, C03029.
-    
+
     """
     # Calculate left and right stencils.
     q_left = (q - 1) / 2
@@ -215,7 +224,7 @@ def _derivative_stencil_coefficients(axis, p=1, q=3):
     I = axis.size
 
     # Constructs matrices according to Cushman-Roisin & Beckers (2011)
-    # equations (1.25) and adapted for variable grids as in Arbic et 
+    # equations (1.25) and adapted for variable grids as in Arbic et
     # al. (2012), equations (20), (22). The linear system of equations
     # is solved afterwards.
     coeffs = zeros((I, q))
@@ -242,7 +251,7 @@ def _derivative_stencil_coefficients(axis, p=1, q=3):
             B = zeros((q, 1))
             # This tells where the p-th derivative is calculated
             B[p] = factorial(p)
-            C = linalg.solve(A[:q-start-stop, start:q-stop], 
+            C = linalg.solve(A[:q-start-stop, start:q-stop],
                 B[:q-(start+stop), :])
             #
             smart_coeffs[da_key] = C.flatten()
@@ -252,8 +261,8 @@ def _derivative_stencil_coefficients(axis, p=1, q=3):
     return coeffs
 
 
-def continuous_timeseries(dat, dt, fill=None, max_gap=12, mask=True, skip=[],
-    skip_fill=[]):
+def continuous_timeseries(dat, dt, tlim=None, fill=None, max_gap=12, mask=True,
+    skip=[], skip_fill=[]):
     """Creates continuous data array.
 
     Parameters
@@ -262,6 +271,8 @@ def continuous_timeseries(dat, dt, fill=None, max_gap=12, mask=True, skip=[],
         Input data.
     dt : datetime.timedelta
         Time step.
+    tlim : list, optional
+        Indicates the upper and lower limits for time.
     fill : string, optional
         If set to `climatology`, fills data gaps with climatological
         data. If set to `interpolate` fills data gaps with cubic spline
@@ -289,11 +300,23 @@ def continuous_timeseries(dat, dt, fill=None, max_gap=12, mask=True, skip=[],
     # interval, the size of the new array. Then creates a bin array in which
     # original data will be fit and finally initializes new data array.
     # Creates an array of indices of the new data.
-    T0 = num2date(dat['time'][0])
-    T1 = num2date(dat['time'][-1])
+    if tlim == None:
+        T0 = num2date(dat['time'].min())
+        T1 = num2date(dat['time'].max())
+    elif (isinstance(tlim[0], datetime) &
+            isinstance(tlim[1], datetime)):
+        T0, T1 = tlim
+    elif isinstance(tlim[0], float) & isinstance(tlim[1], float):
+        T0 = num2date(tlim[0])
+        T1 = num2date(tlim[1])
+    else:
+        raise ValueError('Invalid temporal limits.')
     t = drange(T0, T1, dt)
     dt = (t[1] - t[0])
     dt2 = dt * 0.5
+    # Appends a new time entry to the end.
+    t = append(t, t[-1] + dt)
+    #
     N = t.size
     bins = arange(t[0] - dt2, t[-1] + 2 * dt2, dt)
     out = ma.empty(N, dtype=dat.dtype)
@@ -303,7 +326,7 @@ def continuous_timeseries(dat, dt, fill=None, max_gap=12, mask=True, skip=[],
 
     # Determines to which bin each data point belongs to.
     bin_sel = digitize(dat['time'], bins)
-    
+
     # Walks through each record and determines each bin mean.
     for i, field in enumerate(dat.dtype.names):
         if field in skip:
@@ -315,22 +338,23 @@ def continuous_timeseries(dat, dt, fill=None, max_gap=12, mask=True, skip=[],
                 sel = ~(dat[field].mask | isnan(dat[field]))
             except:
                 sel = ~(isnan(dat[field]))
-            
+
             is_complex = iscomplex(dat[field][sel]).any()
-            
+
             if is_complex:
-                out_real, _, bin_nr = binned_statistic(dat['time'][sel], 
+                out_real, _, bin_nr = binned_statistic(dat['time'][sel],
                     dat[field][sel].real, statistic='mean', bins=bins)
-                out_imag, _, bin_nr = binned_statistic(dat['time'][sel], 
+                out_imag, _, bin_nr = binned_statistic(dat['time'][sel],
                     dat[field][sel].imag, statistic='mean', bins=bins)
                 out[field] = out_real + 1j * out_imag
                 #bin_nr = list(set(bin_nr_real) | set(bin_nr_imag))
             else:
-                out[field], _, bin_nr = binned_statistic(dat['time'][sel], 
+                out[field], _, bin_nr = binned_statistic(dat['time'][sel],
                     dat[field][sel], statistic='mean', bins=bins)
             # Finds out where the gaps are and fills them either with the
-            # climatological means or simply masks them. It is important to
-            # note that the bin number starts counting at one.
+            # climatological means, interpolates them depending `on max_gap` or
+            # simply masks them. It is important to note that the bin number
+            # starts counting at one.
             sel = list(set(out_idx) - set(unique(bin_nr) - 1))
             sel.sort()
             if ((fill in ['climatology', 'interpolate']) &
@@ -345,28 +369,28 @@ def continuous_timeseries(dat, dt, fill=None, max_gap=12, mask=True, skip=[],
                 #
                 if fill == 'climatology':
                     # Calculates dayly climatological mean.
-                    clima[field] = climatology(dat['time'], dat[field], 
-                        major='month', minor='hour', result='timeseries', 
+                    clima[field] = climatology(dat['time'], dat[field],
+                        major='month', minor='hour', result='timeseries',
                         t_out=t)
                     # Fills invalid data with climatology and masks filled gaps
                     # according to `mask` input parameter.
                     out[field].data[gaps] = clima[field][gaps]
                 elif fill == 'interpolate':
                     if is_complex:
-                        out_real = _interpolate(t[gaps], dat['time'], 
+                        out_real = _interpolate(t[gaps], dat['time'],
                             dat[field].real)
-                        out_imag = _interpolate(t[gaps], dat['time'], 
+                        out_imag = _interpolate(t[gaps], dat['time'],
                             dat[field].imag)
                         out[field].data[gaps] = out_real + 1j * out_imag
                     else:
-                        out[field].data[gaps] = _interpolate(t[gaps], 
+                        out[field].data[gaps] = _interpolate(t[gaps],
                             dat['time'], dat[field])
-                # Masks all data not in continuous timeseries and sets mask in 
+                # Masks all data not in continuous timeseries and sets mask in
                 # gaps according to `mask` parameter.
                 out[field].mask[sel] = True
                 out[field].mask[gaps] = mask
             else:
-                # Mask gaps in new dataset. 
+                # Mask gaps in new dataset.
                 out[field].data[sel] = 0
                 out[field].mask[sel] = True
     #
@@ -395,7 +419,7 @@ def circular_mean(a, A=2**0.5, dtype='mean'):
             Average angle
         <A> : array_like
             If `A` is an array, then retunrs the average modulus.
-    
+
     """
     # Converts array of angles in array of radians.
     a = deg2rad(a)
@@ -435,7 +459,7 @@ def climatology(t, f, major='month', minor='hour', result='climatology',
             for every time t.
         kind : string, optional
             If set to `data`, adjusts minor and major axis to data. If
-            set to `valid`, adjusts minor and major axis to valid 
+            set to `valid`, adjusts minor and major axis to valid
             values, irrespective if they occur in the dataset.
         averaging: string, optional
             If set to `mean` (default), calculates mean values. If set
@@ -454,7 +478,7 @@ def climatology(t, f, major='month', minor='hour', result='climatology',
             Number of occurences.
         ind_j, ind_i : array_like
             Major and minor indices for each time.
-    
+
     """
     # Converts time array to year-month-day array.
     YMD = common.num2ymd(t, **kwargs)
@@ -569,18 +593,20 @@ def climatology(t, f, major='month', minor='hour', result='climatology',
 
 def errors(a, b, result='dict'):
     """
-    Returns the mean error, mean average error and root-mean-square
-    error between `a` and `b`.
+    Returns the mean error, mean average error, root-mean-square
+    error and goodness of fit between `a` and `b`.
 
-    The mean error (ME), mean average error (MAE) and root-mean-square
-    error (RMSE) are defined as:
+    The mean error (ME), mean average error (MAE), root-mean-square
+    error (RMSE) and goodness of fit (G) are defined as:
 
-    ME = \frac{1}{N} \sum\limits_{n=1}^{N} \eta(n) - \eta_C(n)
-    MAE = \frac{1}{N} \sum\limits_{n=1}^{N} \left| \eta(n) -
-        \eta_C(n) \right|
-    RMSE = \sqrt{\frac{1}{N} \sum\limits_{n=1}^{N} \left[ \eta(n) -
-        \eta_C(n) \right]^2}
-    
+    ME = \frac{1}{N} \sum\limits_{n=1}^{N} a(n) - b(n)
+    MAE = \frac{1}{N} \sum\limits_{n=1}^{N} \left| a(n) -
+        b(n) \right|
+    RMSE = \sqrt{\frac{1}{N} \sum\limits_{n=1}^{N} \left[ a -
+        b \right]^2}
+    G = \frac{\sum\limits_{n=1}^{N} \left[ <a> - b \right]^2}
+        {\sum\limits_{n=1}^{N} \left[ <a> - a \right]^2}
+
     Parameters
     ----------
     a, b : array_like
@@ -594,20 +620,23 @@ def errors(a, b, result='dict'):
     """
     # Makes sure input parameters are arrays and checks if they have same
     # shape.
-    a = asarray(a)
-    b = asarray(b)
+    a = ma.masked_invalid(a.copy())
+    b = ma.masked_invalid(b.copy())
     if a.shape != b.shape:
         raise ValueError('Shape of arrays do not match.')
+
+    # Masks
 
     # Calculates errors.
     ME = (a - b).sum() / a.size
     MAE = abs(a - b).sum() / a.size
     RMSE = (((a - b)**2.).sum() / a.size)**0.5
+    G = ((a.mean() - b)**2).sum() / ((b.mean() - b)**2).sum()
 
     if result == 'dict':
-        return dict(ME=ME, MAE=MAE, RMSE=RMSE)
+        return dict(ME=ME, MAE=MAE, RMSE=RMSE, G=G)
     else:
-        return ME, MAE, RMSE
+        return ME, MAE, RMSE, G
 
 
 def fftnegativeshift(x):
@@ -625,11 +654,11 @@ def fftnegativeshift(x):
     PARAMETERS
         x (array like) :
             Input array.
-    
+
     RETURNS
         y (array like) :
             The shifted array.
-    
+
     """
     tmp = asarray(x)
     if tmp.ndim != 2:
@@ -653,17 +682,17 @@ def fftnegativeshift(x):
 
 
 def next_power_of_two(A):
-    """Takes every element in A and calculates the next integer power of 
+    """Takes every element in A and calculates the next integer power of
     two.
-    
+
     PARAMETERS
         A (integer, float, array like) :
             Values to calculate the next power of two.
-    
+
     RETURNS
         B (integer, array like) :
             Next integer power of two.
-    
+
     """
     t = type(A)
     a = asarray(A)
@@ -679,7 +708,7 @@ def power_spectral_density(h, shape=None, delta=(1., 1.), mirror='',
 
     The 2D-PSD is defined as the squared amplitude per unit area of the
     spectrum of a surface height map
-    
+
     PARAMETERS
         h (array like) :
         shape (list or tuple, optional) :
@@ -700,11 +729,11 @@ def power_spectral_density(h, shape=None, delta=(1., 1.), mirror='',
     REFERENCES
         Emery, W. J. & Thomson, R. E. Data analysis methods in physical
         oceanography Elsevier, 2001, 638, section 5.6.3.2
-        
+
         Sidick, E. Power spectral density specification and analysis
         of large optical surfaces SPIE Europe Optical Metrology, 2009,
         73900L-73900L.
-    
+
     """
     if h.ndim != 2:
         raise ValueError('This function works only with two-dimensional '
@@ -729,7 +758,7 @@ def power_spectral_density(h, shape=None, delta=(1., 1.), mirror='',
     if negativeshift:
         j = (J + 1) // 2
         FFT[1:j, :] = fliplr(FFT[1:j, :])
-    
+
     if mirror.find('x') >= 0:
         fft = zeros((FFT.shape[0], FFT.shape[1]/2), dtype=complex)
         fft[:, 0] = FFT[:, 0]
@@ -738,7 +767,7 @@ def power_spectral_density(h, shape=None, delta=(1., 1.), mirror='',
         FFT = fft.copy()
     else:
         FFT = fftshift(FFT, axes=1)
-        freqx = fftshift(freqx) 
+        freqx = fftshift(freqx)
     if mirror.find('y') >= 0:
         fft = zeros((FFT.shape[0]/2, FFT.shape[1]), dtype=complex)
         fft[0, :] = FFT[0, :]
@@ -748,7 +777,7 @@ def power_spectral_density(h, shape=None, delta=(1., 1.), mirror='',
     else:
         FFT = fftshift(FFT, axes=0)
         freqy = fftshift(freqy)
-    
+
     if method == 'ET01':
         PSD = (FFT * FFT.conj()).real / (dx * dy * J * I)
     elif method == 'S09':
@@ -763,8 +792,8 @@ def power_spectral_density(h, shape=None, delta=(1., 1.), mirror='',
         return PSD
 
 
-def bin_average(x, y, dx=1., bins=None, nstd=2., interpolate=True, k=3, s=None,
-    extrapolate='repeat', mode='mean'):
+def bin_average(x, y, dx=1., bins=None, nstd=2., interpolate='bins', k=3,
+    s=None, extrapolate='repeat', mode='mean', profile=False, usemask=True):
     """Calculates bin average from input data.
 
     Inside each bin, calculates the average and standard deviation, and
@@ -785,9 +814,11 @@ def bin_average(x, y, dx=1., bins=None, nstd=2., interpolate=True, k=3, s=None,
         increasing.
     nstd : float, optional
         Confidence interval given as number of standard deviations.
-    interpolate : bool, optional
-        If `True` (default), interpolates averages in bins to central
-        bin points.
+    interpolate : string or boolean, optional
+        Valid options are `bins` (default), `full` or `False` and
+        defines whether to interpolate data to central bin points only
+        in filled bins, over full time-series, or skip interpolation
+        respectively.
     k : int, optional
         Specifies the order of the interpolation spline. Default is 3,
         `cubic`.
@@ -820,6 +851,7 @@ def bin_average(x, y, dx=1., bins=None, nstd=2., interpolate=True, k=3, s=None,
         Maximum values in each bin.
 
     """
+    t0 = time()
     # If no bins are given, calculate them from input data.
     if bins == None:
         x_min = floor(x.min() / dx) * dx
@@ -839,74 +871,116 @@ def bin_average(x, y, dx=1., bins=None, nstd=2., interpolate=True, k=3, s=None,
     nbins = len(bins) - 1
     ndata = len(y)
     Sel = zeros(ndata, dtype=bool)
-    bin_y = empty(nbins, dtype=dtype_y)
-    avg_x = empty(nbins, dtype=dtype_x) * nan 
-    avg_y = empty(nbins, dtype=dtype_y) * nan
-    std_x = empty(nbins, dtype=dtype_x) * nan
-    std_y = empty(nbins, dtype=dtype_y) * nan
-    min_y = empty(nbins, dtype=dtype_y) * nan
-    max_y = empty(nbins, dtype=dtype_y) * nan
+    # Initializes ouput arrays, masked or not.
+    if usemask:
+        bin_y = ma.empty(nbins, dtype=dtype_y) * nan
+        avg_x = ma.empty(nbins, dtype=dtype_x) * nan
+        avg_y = ma.empty(nbins, dtype=dtype_y) * nan
+        std_x = ma.empty(nbins, dtype=dtype_x) * nan
+        std_y = ma.empty(nbins, dtype=dtype_y) * nan
+        min_y = ma.empty(nbins, dtype=dtype_y) * nan
+        max_y = ma.empty(nbins, dtype=dtype_y) * nan
+    else:
+        bin_y = empty(nbins, dtype=dtype_y) * nan
+        avg_x = empty(nbins, dtype=dtype_x) * nan
+        avg_y = empty(nbins, dtype=dtype_y) * nan
+        std_x = empty(nbins, dtype=dtype_x) * nan
+        std_y = empty(nbins, dtype=dtype_y) * nan
+        min_y = empty(nbins, dtype=dtype_y) * nan
+        max_y = empty(nbins, dtype=dtype_y) * nan
+    # Determines indices of the bins to which each data points belongs.
+    bin_sel = digitize(x, bins) - 1
+    bin_sel_unique = unique(bin_sel)
+    _nbins = bin_sel_unique.size
     #
-    for i in range(nbins):
+    t1 = time()
+    for i, bin_i in enumerate(bin_sel_unique):
+        if profile:
+            # Erase line ANSI terminal string when using return feed
+            # character.
+            # (source:http://www.termsys.demon.co.uk/vtansi.htm#cursor)
+            _s = '\x1b[2K\rBin-averaging... %s' % (common.profiler(_nbins, i, 0, t0,
+                t1))
+            stdout.write(_s)
+            stdout.flush()
+        # Ignores when data is not in valid range:
+        if (bin_i < 0) | (bin_i > nbins):
+            print 'Uhuuu (signal.py line 908)!!'
+            continue
         # Calculate averages inside each bin in two steps: (i) calculate
         # average and standard deviation; (ii) consider only those values
         # within selected standard deviation range.
-        for step in xrange(2):
-            if step == 0:
-                # Selects data inside bins and calculates average and standard
-                # deviation inside bin.
-                sel = (x >= bins[i]) & (x < bins[i+1])
-            elif (step == 1) & (sel.sum() > 0):
-                # Selects data within selected standard deviation or single
-                # data in current bin.
-                sel = sel & ((y >= (_avg_y - nstd * _std_y)) &
-                    (y < (_avg_y + nstd * _std_y)))
-            #
-            sel_sum = sel.sum()
-            if sel_sum > 1:
-                if mode == 'mean':
-                    _avg_x = x[sel].mean()
-                    _avg_y = y[sel].mean()
-                elif mode == 'median':
-                    _avg_x = median(x[sel])
-                    _avg_y = median(y[sel])
-                else:
-                    raise ValueError('Invalid mode `{}`.'.format(mode))
-                _std_x = x[sel].std()
-                _std_y = y[sel].std()
-                _min_y = y[sel].min()
-                _max_y = y[sel].max()
-                # This skips the next step if standard deviation is zero.
-                if _std_y == 0:
-                    break
+        sel = flatnonzero(bin_sel == bin_i)
+        # Selects data within selected standard deviation or single
+        # data in current bin.
+        if sel.size > 1:
+            _avg_y = y[sel].mean()
+            _std_y = y[sel].std()
+            if _std_y > 1e-10:
+                _sel = ((y[sel] >= (_avg_y - nstd * _std_y)) &
+                    (y[sel] <= (_avg_y + nstd * _std_y)))
+                #print bin_i, sel.size, _avg_y, _std_y
+                sel = sel[_sel]
+                #print sel.size
+            # Calculates final values
+            if mode == 'mean':
+                _avg_x = x[sel].mean()
+                _avg_y = y[sel].mean()
+            elif mode == 'median':
+                _avg_x = median(x[sel])
+                _avg_y = median(y[sel])
             else:
-                if sel_sum == 1:
-                    _avg_x, _avg_y = x[sel][0], y[sel][0]
-                    _std_x, _std_y = 0, 0
-                    _min_y, _max_y = nan, nan
-                else:
-                    _avg_x, _avg_y = nan, nan
-                    _std_x, _std_y = nan, nan
-                    _min_y, _max_y = nan, nan
-                # This skips the next step and goes straight to bin averaging.
-                break
-        
+                raise ValueError('Invalid mode `{}`.'.format(mode))
+            _std_x = x[sel].std()
+            _std_y = y[sel].std()
+            _min_y = y[sel].min()
+            _max_y = y[sel].max()
+        else:
+            _avg_x, _avg_y = x[sel][0], y[sel][0]
+            _std_x, _std_y = 0, 0
+            _min_y, _max_y = nan, nan
+        #
         #print i, sel_sum, _avg_x, _avg_y
         #
-        avg_x[i] = _avg_x
-        avg_y[i] = _avg_y
-        std_x[i] = _std_x
-        std_y[i] = _std_y
-        min_y[i] = _min_y
-        max_y[i] = _max_y
+        avg_x[bin_i] = _avg_x
+        avg_y[bin_i] = _avg_y
+        std_x[bin_i] = _std_x
+        std_y[bin_i] = _std_y
+        min_y[bin_i] = _min_y
+        max_y[bin_i] = _max_y
+        #
+        if profile:
+            _s = '\rBin-averaging... %s' % (common.profiler(_nbins, i+1, 0, t0,
+                t1))
+            stdout.write(_s)
+            stdout.flush()
 
     # Interpolates selected data to central data point in bin using spline.
-    if interpolate:
+    # Only interpolates data in filled bins.
+    if interpolate in ['bins', 'full']:
+        sel = ~isnan(avg_y)
         bin_x = (bins[1:] + bins[:-1]) * 0.5
-        #bin_y = extrapolate(bin_x, x[Sel], y[Sel], k=k, s=s)
-        bin_y = _interpolate(bin_x, avg_x, avg_y, k=k, s=s,
-            outside=extrapolate)
-        #
+        if interpolate == 'bins':
+            bin_y[sel] = _interpolate(bin_x[sel], avg_x[sel], avg_y[sel], k=k,
+                s=s, outside=extrapolate)
+        elif interpolate == 'full':
+            bin_y = _interpolate(bin_x, avg_x[sel], avg_y[sel], k=k, s=s,
+                outside=extrapolate)
+    elif interpolate != False:
+        raise ValueError('Invalid interpolation mode `{}`.'.format(
+            interpolate))
+
+    # Masks invalid data.
+    if usemask:
+        bin_y = ma.masked_invalid(bin_y)
+        avg_x = ma.masked_invalid(avg_x)
+        avg_y = ma.masked_invalid(avg_y)
+        std_x = ma.masked_invalid(std_x)
+        std_y = ma.masked_invalid(std_y)
+        min_y = ma.masked_invalid(min_y)
+        max_y = ma.masked_invalid(max_y)
+
+    if interpolate:
         return bin_x, bin_y, avg_x, avg_y, std_x, std_y, min_y, max_y
     else:
         return avg_x, avg_y, std_x, std_y, min_y, max_y
@@ -926,25 +1000,26 @@ def _interpolate(xi, xd, yd, k=3, s=None, outside='repeat'):
     elif sel.sum() <= k:
         k = sel.sum() - 1
     # Removes nan from input data arrays.
-    xd, yd = xd[sel], yd[sel]
+    _xd, _yd = xd[sel], yd[sel]
     # First calculates spline inside the data domain.
-    sel = (xi >= xd[0]) & (xi <= xd[-1])
-    spl_k = interpolate.UnivariateSpline(xd, yd, k=k, s=s)
+    sel = (xi >= _xd[0]) & (xi <= _xd[-1])
+    spl_k = interpolate.UnivariateSpline(_xd, _yd, k=k, s=s)
     yi[sel] = spl_k(xi[sel])
     # Then extrapolates the data outside data domain, if appropriate.
     # Extrapolation can be either linear, or simply repeating nearest data
     # values.
     if outside in [True, 'linear']:
-        spl_1 = interpolate.UnivariateSpline(xd, yd, k=1, s=0)
+        spl_1 = interpolate.UnivariateSpline(_xd, _yd, k=1, s=0)
         yi[~sel] = spl_1(xi[~sel])
     elif outside in ['repeat', 'exponential']:
         if sel.sum() == 0:
-            yi[~sel] = _nearest_neighbour(xi[~sel], xd, yd)
+            yi[~sel] = _nearest_neighbour(xi[~sel], _xd, _yd)
         else:
             yi[~sel] = _nearest_neighbour(xi[~sel], xi[sel], yi[sel])
     if outside == 'exponential':
         sel = flatnonzero(xi >= -5.)
-        yi[sel], popt, _ = _fit_exponential(xi[sel], xd, yd, right=xi[sel[0]])
+        yi[sel], popt, _ = _fit_exponential(xi[sel], _xd, _yd,
+            right=xi[sel[0]])
         print '{:.4f}\t{:.4f}'.format(*popt),
     #
     return yi
@@ -959,3 +1034,167 @@ def _nearest_neighbour(xi, xd, yd):
         yi[i] = yd[j].mean()
     #
     return yi
+
+
+def moving_average(dat, columns=None, window='hanning', size=5,
+    normalize=True, **kwargs):
+    """
+    Calculates window-averaged time-series.
+
+    Parameters
+    ----------
+    dat : array like, record array
+        Array with data.
+    columns : array like
+    window : string, array like
+        The window to apply. Can be either an array or a string. If a
+        string, creates a window of length given by `size` parameter.
+        Valid strings are: `boxcar`, `hanning`, `lanczos`.
+    size : integer, optional
+        Size of the window. Default window size is 5.
+    normalize : bool, optional
+        If `True` (default) normalizes window to have unit integral.
+    kwargs : optional
+        Additional arguments depending on the selected window function.
+
+    Returns
+    -------
+        TODO
+
+    """
+    # Checks for data columns.
+    ndim = None
+    if columns == None:
+        columns = dat.dtype.names
+    if columns == None:
+        ndim = dat.ndim
+        if dat.ndim == 1:
+            dat = ma.asarray([dat])
+            dat = ma.masked_invalid(dat)
+            columns = [0]
+        else:
+            columns = arange(y.shape[1])
+    # Initializes result array.
+    Dat = copy(dat)
+
+    # If window parameter is given as a string, calculate window array.
+    if isinstance(window, basestring):
+        # Makes sure that window size is odd and an integer
+        size = 2 * (size - 1) // 2 + 1
+        if window == 'hanning':
+            window = hanning(size)
+        elif window == 'boxcar':
+            window = ones(size)
+        elif window == 'lanczos':
+            window = lanczos(size, **kwargs)
+        else:
+            raise ValueError('Invalid window `{}`.'.format(window))
+    elif not isinstance(window, ndarray):
+        raise ValueError('Invalid window.')
+
+    # Normalize window to avoid input of variance.
+    if normalize:
+        window /= window.sum()
+
+    # Walksthroug each column/variable in data array.
+    for col in columns:
+        mean = dat[col].mean()
+        y = dat[col] - mean
+        mask = dat[col].mask
+        y[mask] = 0
+        # Mirror the edges to avoid edge effects.
+        y = ma.hstack([y[:size][::-1], y, y[-size:][::-1]])
+        # Calculates the windowed-average. In case that input values are
+        # complex, calculates the complex window average.
+        if iscomplex(y).any():
+            Y = convolve(y.real, window, mode='same') + \
+                1j * convolve(y.imag, window, mode='same')
+        else:
+            Y = convolve(y, window, mode='same')
+        # Update result array with windo-averaged values.
+        Y = Y[size:-size]
+        mask = mask | isnan(Y)
+        Dat[col] = ma.masked_where(mask, Y) + mean
+    #
+    if ndim == 1:
+        return Dat[0]
+    else:
+        return Dat
+
+
+def lanczos(M, fc=0.2, lowpass=True):
+    """
+    Calculates the weights for a cosine--Lanczos filter.
+
+    Parameters
+    ----------
+    M : integer
+        The size of the filter window. Duchon (1979) suggests that the
+        mininum number of weights (size) required to achieve unit
+        response at the pass-band is M >= 1.3 / fc.
+    fc : float
+        Cutoff frequency given as a fraction of the Nyquist frequency.
+    lowpass : bool, optional
+        If true, calculates the weights of the low-pass cosine--Lanczos
+        filter. If false calculate the weights for the high-pass filter.
+
+    Returns
+    -------
+    w : array like
+        The weights of the low-pass filter.
+
+    Examples
+    --------
+    TODO
+
+    References
+    ----------
+    Duchon, C. E. Lanczos filtering in one and two dimensions. Journal of
+    Applied Meteorology, 1979, 18, 1016-1022
+
+    Emery, W. J. & Thomson, R. E. Data analysis methods in physical
+    oceanography. Elsevier, 2014, 716.
+
+    """
+    # The weighting terms $h_k$ determine the output series of the filter. $M$
+    # is the width of the filter window and $M << N$, where $N$ is the number
+    # of data points. $M$ should be sufficiently large that the transfer
+    # function $H(\omega)$ is close to unity in the pass-band and near zero in
+    # the stop-band.
+
+    # Half the window size to calculate wave number array
+    m = M // 2
+    # Wave number array
+    k = arange(1, m+1, dtype=float)
+    # Redefines window size (will be odd) and initializes weight array.
+    M = 2 * k.size + 1
+    w_k = zeros(M, dtype=float)
+
+    # For a low-pass cosine filter (Emery & Thomson, 2014, section 6.7.1,
+    # page 613), $0 \leq |\omega| \leq \omega_c$ defines the bounds of the
+    # filter and the weights are given by the following expression. Note that
+    # here we simplified the given equation since $\frac{\omega_c}{\omage_N}$
+    # appear both in the numerator and denominator.
+    h_k = sin(pi * k * fc) / (pi * k)  # eq. (6.43)
+
+    # As of Emery & Thomson (2014, section 6.7.2, page 613), the Lanczos
+    # window is defined in terms of the so-called sigma-factors, where M is
+    # the number of distinct filter coefficients $h_k$, $k={1, ..., M}$ and
+    # $\omega_k = (M -1) / M is the frequency of the last term kept in the
+    # Fourier expansion.
+    sigma = sin(pi * k / m) / (pi * k / m)
+
+    # Calculate the weights of the low-pass cosine Lanczos filter, eq. 6.47
+    # in Emery & Thomson (2014). Remember that $h_k(0) = \omega_c / \omega_N$,
+    # i.e. the cutoff frequency given as a fraction of the Nyquist frequency,
+    # and that $\sigma(M, 0) = 1$.
+    if lowpass:
+        w_k[0:m] = (h_k * sigma)[::-1]
+        w_k[m+1:M] = h_k * sigma
+        w_k[m] = fc
+    # For the high-pass filter, we use eq. 6.48 in Emery & Thomson (2014).
+    else:
+        w_k[0:m] = -(h_k * sigma)[::-1]
+        w_k[m+1:M] = -h_k * sigma
+        w_k[m] = 1 - fc
+    return w_k

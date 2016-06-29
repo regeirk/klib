@@ -6,3 +6,4 @@ MANIFEST
 build
 dist
 *.egg*
+tmp/

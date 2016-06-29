@@ -27,7 +27,7 @@ import pylab
 
 from time import time
 from sys import stdout
-from matplotlib import dates, rcParams, ticker
+from matplotlib import dates, rcParams, ticker, tri
 from matplotlib.patches import Polygon
 from scipy.stats import nanmean, nanstd
 from mpl_toolkits.basemap import Basemap, pyproj, cm, shiftgrid
@@ -308,8 +308,12 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
 
     # Determines the number of dimensions of the variable to be plotted and
     # the sizes of each dimension.
+    triangulate = False
     dim = len(z.shape)
-    if dim == 3:
+    if dim == 1:
+        triangulate = True
+        a, b, c = x.size, y.size, z.size
+    elif dim == 3:
         c, b, a = z.shape
     elif dim == 2:
         b, a = z.shape
@@ -645,6 +649,12 @@ def map(lon, lat, z, z2=None, tm=None, projection='cyl', save='', ftype='png',
         elif ctype == 'contour':
             im = m.contour(x, y, dat, crange, cmap=cmap, extend=extend,
                 hold='on', colors=colors, linestyles=linestyles,
+                linewidths=linewidths, hatches=hatches)
+            if cmap == None:
+                pylab.clabel(im, fmt=fmt, inline=True, fontsize='medium')
+        elif ctype == 'tricontour':
+            im = m.tricontour(x, y, dat, crange, cmap=cmap, extend=extend, 
+                hold='on', colors=colors, linestyles=linestyles, 
                 linewidths=linewidths, hatches=hatches)
             if cmap == None:
                 pylab.clabel(im, fmt=fmt, inline=True, fontsize='normal')
