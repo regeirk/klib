@@ -46,6 +46,12 @@ def __init__(show=False):
         pylab.ion()
 
 
+def axes_label(s, ax, x=0.02, y=0.95,
+          bbox=dict(edgecolor='w', facecolor='w', alpha=0.9)):
+    ax.text(x, y, s, ha='left', va='top', transform=ax.transAxes,
+            bbox=bbox, zorder=99)
+
+
 def figure(fp=dict(), ap=dict(left=0.15, bottom=0.12, right=0.95, top=0.95,
     wspace=0.10, hspace=0.10), orientation='portrait'):
     """Creates a standard figure.
@@ -451,13 +457,20 @@ def plot(x, y, title='', xlabel='', xunits='', ylabel='', yunits='', label='',
                 scale = 1.
                 scale_label = ''
 
+        # Sets label for legend
+        try:
+            _label = legend_label[i]
+        except:
+            _label = None
+
         # Sets scale label if not set
         if (scale != 1) & (scale_label == ''):
             scale_label = r'\times %s' % (scale)
 
         args = kwargs.copy()
         args.update(dict(color=color[i], markerfacecolor=color[i],
-            linewidth=linewidth[i], markersize=markersize[i], alpha=alpha[i]))
+            linewidth=linewidth[i], markersize=markersize[i], alpha=alpha[i]),
+            label=_label)
         quiver = False
         if numpy.iscomplex(ys).any():
             quiver = True
@@ -571,8 +584,7 @@ def plot(x, y, title='', xlabel='', xunits='', ylabel='', yunits='', label='',
     if title:
         ax.set_title(title)
     if label:
-        ax.text(label_pos[0], label_pos[1], label, ha='left', va='top',
-            transform=ax.transAxes, bbox=bbox, zorder=99)
+        axes_label(label, ax, label_pos[0], label_pos[1], bbox)
     if xunits != '':
         ax.set_xlabel(ur'\textbf{%s} $\left[%s\right]$' % (xlabel, xunits))
     elif xlabel != None:
@@ -588,7 +600,7 @@ def plot(x, y, title='', xlabel='', xunits='', ylabel='', yunits='', label='',
     ax.minorticks_on()
     ax.grid(True, zorder=0)
 
-    if legend_label != None:
+    if (1 == 2) & (legend_label is not None):
         # Draws legend
         legend(legend_label, ax=ax)
 
@@ -1131,37 +1143,44 @@ def windrose(wind=None, speed=None, direction=None, npoints=32, bins=None,
     """
     Plots windrose for a series of measurements.
 
-    PARAMETERS:
-        t (array like) :
-            Time
-        wind (complex array like) :
-            Wind vector in complex form (u + 1j*v).
-        speed (array like) :
-            Array of speed (modulos of velocity).
-        direction (array like) :
-            Direction of velocity vector in cardinal degrees, i.e.
-            zero is heading north.
-        npoints (integer) :
-            Number of cardinal points in compass. Values can be
-            either 4, 8, 16 or 32 (default).
-        bins (array like) :
-            Bins of speed ranges to plot.
-        dt (float, optional) :
-            Time interval for each measurements. If set calculates
-            frequency instead of percentage
-        mode (string, optional) :
-            Sets whether orientation is 'from' (default) or 'to'
-            direction when input is the wind vector field.
-        fig :
-        cmap :
-        legend_ncol (int, optional) :
-            Sets the number of columns for the legend. If set to zero,
-            then no legend is plotted. In this case it also returns the
-            reference object to the for later use.
+    Parameters
+    ----------
+    t : array like
+        Time
+    wind : complex array like
+        Wind vector in complex form (u + 1j*v).
+    speed : array like
+        Array of speed (modulos of velocity).
+    direction : array like
+        Direction of velocity vector in cardinal degrees, i.e.
+        zero is heading north.
+    npoints : integer
+        Number of cardinal points in compass. Values can be
+        either 4, 8, 16 or 32 (default).
+    bins : array like
+        Bins of speed ranges to plot.
+    dt : float, optional
+        Time interval for each measurements. If set calculates
+        frequency instead of percentage
+    mode : string, optional
+        Sets whether orientation is 'from' (default) or 'to'
+        direction when input is the wind vector field.
+    fig :
+    cmap :
+    legend_ncol : int, optional
+        Sets the number of columns for the legend. If set to zero,
+        then no legend is plotted. In this case it also returns the
+        reference object to the for later use.
+
+    Returns
+    -------
+    stats, ax, p_list, titles
+    stats, ax, titles
+
 
     """
     # Checks input parameters
-    if wind != None:
+    if wind is not None:
         # Converts velocity vector to speed and direction arrays, checking
         # first if all data is masked
         try:
@@ -1178,7 +1197,7 @@ def windrose(wind=None, speed=None, direction=None, npoints=32, bins=None,
             direction = numpy.arctan2(wind.real, wind.imag)
         else:
             raise ValueError('Invalid mode `{}`.'.format(mode))
-    elif direction != None: #direction.max() > 2*numpy.pi:
+    elif direction != None:  # direction.max() > 2*numpy.pi:
         # Assumes that if direction is greater than 2 \pi, it is given
         # in degrees. If so, converts it to radians.
         try:
@@ -1187,14 +1206,14 @@ def windrose(wind=None, speed=None, direction=None, npoints=32, bins=None,
         except:
             pass
         direction = numpy.deg2rad(direction)
-    if bins == None:
+    if bins is None:
         bins = [1, 5, 10, 15]
-    if dt == None:
+    if dt is None:
         dt = 1
         use_percent = True
     else:
         use_percent = False
-    if fig == None:
+    if fig is None:
         # Creates figure instance for the plot.
         fig = figure()
     # Initializes compass
@@ -1206,6 +1225,7 @@ def windrose(wind=None, speed=None, direction=None, npoints=32, bins=None,
 
     # Distributes along direction and speed.
     cols = len(bins) + 1
+    titles = []
     stats = numpy.zeros((npoints+1, cols+1))
     stats[0, 0] = numpy.nan
     stats[0, 1:-1] = bins
@@ -1214,6 +1234,7 @@ def windrose(wind=None, speed=None, direction=None, npoints=32, bins=None,
     calm = (speed == 0).sum()
     legend_labels = [0]
     for row in range(npoints):
+        titles.append(rows[row][1])
         stats[row+1, 0] = numpy.rad2deg(rows[row][2])
         start = 1e-9
         for col in range(cols):
@@ -1286,9 +1307,9 @@ def windrose(wind=None, speed=None, direction=None, npoints=32, bins=None,
             alpha=0.6, transform=ax.transAxes)
 
     if legend_ncol == 0:
-        return stats, ax, p_list
+        return stats, ax, p_list, titles
     else:
-        return stats, ax
+        return stats, ax, titles
 
 
 def _from_cardinal_to_angle(a, mode='radian'):

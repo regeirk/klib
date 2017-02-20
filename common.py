@@ -11,7 +11,7 @@ __all__ = ['distance', 'intersect', 'lon180', 'lon360', 'lon_n', 'meshgrid2',
 import re
 from dateutil.parser import parse
 from matplotlib import dates
-from numpy import (angle, arange, array, asarray, ceil, concatenate, cos, 
+from numpy import (angle, arange, array, asarray, ceil, concatenate, cos,
     cumsum, diff, empty, flatnonzero, floor, intersect1d, iscomplex, loadtxt,
     log10, pi, round, sign, sqrt, zeros, ma, int_)
 from pylab import find
@@ -23,7 +23,7 @@ daysinyear = 365.2421896698 # Wikipedia (?)
 hoursinday = 2 * pi / omega / 3600
 secondsinday = 86400.
 
-daysinyear_ = lambda y : 365 + int_(((y % 4) == 0) & 
+daysinyear_ = lambda y : 365 + int_(((y % 4) == 0) &
     (((y % 100) != 0) | ((y % 400) == 0)))
 
 
@@ -31,7 +31,7 @@ def period2dhms(T, result='string'):
     """Converts periods in days to day, hour, minute, second."""
     if type(T) in [float, int]:
         T = [T]
-    
+
     dhms = []
     for t in T:
         days = int(t)
@@ -59,7 +59,7 @@ def period2dhms(T, result='string'):
         else:
             dhms.append(a)
         #
-            
+
     if result == 'string':
         return dhms
     else:
@@ -70,9 +70,9 @@ def year2num(y):
     """
     Converts decimal year representation of date/time to a floating point
     value representing the number of days since 0001-01-01 00:00:00 UTC.
-    Fraction part represents hours, minutes and seconds. For details, 
+    Fraction part represents hours, minutes and seconds. For details,
     please refer to matplotlib.dates module documentation.
-    
+
     """
     if isinstance(y, int) | isinstance(y, float):
         y = asarray([y])
@@ -84,7 +84,7 @@ def year2num(y):
     residual = y - year
     julian_day = residual * daysinyear_(year)
     #
-    num = [dates.date2num(dates.datetime.date(year=_y, month=1, day=1)) + _d 
+    num = [dates.date2num(dates.datetime.date(year=_y, month=1, day=1)) + _d
         for _y, _d in zip(year, julian_day)]
     #
     if return_array:
@@ -116,14 +116,14 @@ def natural_keys(text):
     """Natural (or human) sorting of string list.
 
     The solution is based on code provided by 'unutbu' available at
-    
+
     http://stackoverflow.com/questions/5967500/
         how-to-correctly-sort-a-string-with-a-number-inside
 
     and
 
     http://www.regular-expressions.info/floatingpoint.html
-    
+
     EXAMPLE
         >>> alist = ['rbio2.4', 'sym6', 'haar', 'bior3.1', 'sym3',
             'rbio1.1', 'db2', 'rbio1.3', 'sym7', 'rbio1.5', 'sym5',
@@ -234,7 +234,7 @@ def num2ymd(T, t0=None, **kwargs):
         6--Julian day, 7--ISO week number, and 8--season. Season is
         given as a number from 1 to 4 indicating respectively winter,
         spring, summer and fall.
-    
+
     See also
     --------
         season
@@ -249,7 +249,7 @@ def num2ymd(T, t0=None, **kwargs):
          isinstance(t0, dates.datetime.datetime)):
         _T0 = t0
         _t0 = dates.date2num(_T0) - 1 # Makes sure Julian day starts at 1.
-    # If checks whether `t0` is an integer. This will be used later to decide 
+    # If checks whether `t0` is an integer. This will be used later to decide
     # if Julian day will be returned as an integer.
     is_int = isinstance(t0, int)
     #
@@ -292,7 +292,7 @@ def num2latlon(x, y, mode='full', padding=True, hemispherefirst=False,
             directory listings for example. This parameters applies
             only to 'float' or 'int' data type (see bellow).
         x180 (boolean, optional) :
-            If set to 'True', forces longitude to be between -180 and 
+            If set to 'True', forces longitude to be between -180 and
             +180 degrees. Otherwise, returns longitude ranging from 0
             to 360 degrees.
         separator (string, optional) :
@@ -368,10 +368,14 @@ def num2latlon(x, y, mode='full', padding=True, hemispherefirst=False,
         x, y = abs(x), abs(y)
         minute = (x - int(x)) * 60
         second = (minute - int(minute)) * 60
-        lon = '%d$^{\circ}$%d\'%.3f\"%s' % (int(x), int(minute), second, EW)
+        lon = ('{deg:d}$^{{\circ}}${min:{precision}f}\'{sec:{precision}f}\"'
+            '{hemis}').format(deg=int(x), min=minute, sec=second, hemis=EW,
+            precision=precision)
         minute = (y - int(y)) * 60
         second = (minute - int(minute)) * 60
-        lat = '%d$^{\circ}$%d\'%.3f\"%s' % (int(y), int(minute), second, NS)
+        lat = ('{deg:d}$^{{\circ}}${min:{precision}f}\'{sec:{precision}f}\"'
+            '{hemis}').format(deg=int(y), min=minute, sec=second, hemis=NS,
+            precision=precision)
     elif dtype == 'label dm':
         x, y = abs(x), abs(y)
         minute = (x - int(x)) * 60
@@ -382,11 +386,11 @@ def num2latlon(x, y, mode='full', padding=True, hemispherefirst=False,
             deg=int(y), min=minute, hemis=NS, precision=precision)
     else:
         raise Warning, 'Type \'%s\' not supported.' % (dtype)
-    
+
     if separator != '.':
         lat = lat.replace('.', separator)
         lon = lon.replace('.', separator)
-    
+
     if mode == 'full':
         if dtype in ['label dms', 'label dm']:
             return '%s; %s' % (lat, lon)
@@ -415,7 +419,7 @@ def profiler(N, n, t0, t1, t2):
     t0, t1, t2 (float) :
         Time since the Epoch in seconds for the current module
         (t0), subroutine (t1) and step (t2).
-    
+
     Returns
     -------
     s (string) :
@@ -654,7 +658,7 @@ def step(x, n=None, kind='linear', s0=2., returnrange=False):
         i = 0
     xmajor = major[i] * order
     xminor = minor[i] * order
-    
+
     if returnrange == False:
         return (xmajor, xminor)
     elif returnrange == True:
@@ -673,7 +677,7 @@ def step(x, n=None, kind='linear', s0=2., returnrange=False):
         rmax = ceil(rmax / xminor) * xminor
         xrange_ = arange(rmin, rmax + xminor, xminor)
         xticks = arange(rmin, rmax + xmajor, xmajor)
-        
+
         if (xmin < rmin) & (xmax > rmax):
             extend = 'both'
         elif (xmin < rmin) & (xmax <= rmax):
@@ -693,11 +697,11 @@ def step(x, n=None, kind='linear', s0=2., returnrange=False):
 def meshgrid2(*arrs):
     """
     Return coordinate matrices from N coordinate vectors.
-    
+
     REFERENCES
-        http://stackoverflow.com/questions/1827489/numpy-meshgrid-in-3d    
+        http://stackoverflow.com/questions/1827489/numpy-meshgrid-in-3d
     """
-    
+
     arrs = tuple(reversed(arrs))  #edit
     lens = map(len, arrs)
     dim = len(arrs)
@@ -706,14 +710,14 @@ def meshgrid2(*arrs):
     for s in lens:
         sz*=s
 
-    ans = []    
+    ans = []
     for i, arr in enumerate(arrs):
         slc = [1]*dim
         slc[i] = lens[i]
         arr2 = asarray(arr).reshape(slc)
         for j, sz in enumerate(lens):
             if j!=i:
-                arr2 = arr2.repeat(sz, axis=j) 
+                arr2 = arr2.repeat(sz, axis=j)
         ans.append(arr2)
 
     return tuple(ans[::-1])
@@ -722,7 +726,7 @@ def meshgrid2(*arrs):
 def simpson(y):
     """Simpson-rule column-wise cumulative summation.
 
-    Numerical approximation of a function F(x) such that 
+    Numerical approximation of a function F(x) such that
     Y(X) = dF/dX.  Each column of the input matrix Y represents
     the value of the integrand  Y(X)  at equally spaced points
     X = 0,1,...size(Y,1).
@@ -742,7 +746,7 @@ def simpson(y):
     See also numpy.cumsum, numpy.sum, numpy.trapz
 
     REFERENCES
-    
+
     Based upon http://www-pord.ucsd.edu/~matlab/stream.htm
     """
     # 3-points interpolation coefficients to midpoints.
@@ -760,7 +764,7 @@ def simpson(y):
         y = y.transpose();
         a = y.shape[0]
     f = zeros(y.shape);
-    
+
     # If only 2 elements in columns - simple sum divided by 2
     if a == 2:
         f[1, :] = (y[0, :]+y[1]) / 2;
@@ -785,20 +789,20 @@ def simpson(y):
 
 
 def intersect(*args) :
-    """Intersects every two arrays and returns the intersected values 
+    """Intersects every two arrays and returns the intersected values
     and data indices.
-    
+
     PARAMETERS
         A, B, ... (array like) :
-            Sequence of arrays to be intersected. Note that A is 
+            Sequence of arrays to be intersected. Note that A is
             intersected with B, C is intersected with D, etc.
-    
+
     RETURNS
         intersect, idx1, idx1 (array like) :
             The intersection and the indices in each array.
-    
+
     """
-    
+
     n = len(args)
     result = []
 
