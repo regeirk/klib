@@ -68,7 +68,7 @@ def speeddir_to_vector(m, a, dtype='from', masked=True):
     if dtype == 'from':
         a = deg2rad(270 - a)
     elif dtype == 'to':
-        a = deg2rad(90- a)
+        a = deg2rad(90 - a)
     else:
         raise ValueError('Invalid data type `{}`.'.format(dtype))
     # Calcultes vector coordinates.
@@ -853,7 +853,7 @@ def bin_average(x, y, dx=1., bins=None, nstd=2., interpolate='bins', k=3,
     """
     t0 = time()
     # If no bins are given, calculate them from input data.
-    if bins == None:
+    if bins is None:
         x_min = floor(x.min() / dx) * dx
         x_max = 0. # numpy.ceil(x.max() / dx) * dx
         bins = arange(x_min-dx, x_max+dx, dx) + dx/2
@@ -1064,9 +1064,9 @@ def moving_average(dat, columns=None, window='hanning', size=5,
     """
     # Checks for data columns.
     ndim = None
-    if columns == None:
+    if columns is None:
         columns = dat.dtype.names
-    if columns == None:
+    if columns is None:
         ndim = dat.ndim
         if dat.ndim == 1:
             dat = ma.asarray([dat])
@@ -1120,6 +1120,47 @@ def moving_average(dat, columns=None, window='hanning', size=5,
         return Dat[0]
     else:
         return Dat
+
+
+def moving_stdev(y, size=5):
+    """
+    Calculates moving standard deviation of time-series.
+
+    Parameters
+    ----------
+    y : array like, record array
+        Array with data.
+    size : integer, optional
+        Size of the window. Default window size is 5.
+    Returns
+    -------
+        TODO
+
+    """
+    # Makes sure that window size is odd and an integer
+    size = 2 * (size - 1) // 2 + 1
+    # Half size for array indexing.
+    ezis = (size - 1) / 2
+
+    # Initializes result array.
+    Y = copy(y)
+
+    N = y.size
+
+    # Walks through each data point in time-series.
+    for n in range(N):
+        # Sets array indices of the window
+        _i = n - ezis
+        if _i < 0:
+            _i = 0
+        _j = n + ezis
+        if _j > N:
+            _j = N
+        # Calculate moving standard deviation.
+        Y[n] = y[_i:_j].std()
+
+    # Returns result
+    return Y
 
 
 def lanczos(M, fc=0.2, lowpass=True):
